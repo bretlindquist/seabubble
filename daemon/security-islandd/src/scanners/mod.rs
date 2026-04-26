@@ -4,7 +4,6 @@ use shared::{control::AllowedAction, CapabilityRequest, IncidentState, Severity}
 
 pub mod magika;
 pub mod secrets;
-pub mod state;
 pub mod shell_policy;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -58,24 +57,11 @@ pub struct Pipeline {
 }
 
 impl Pipeline {
-    #[cfg(not(feature = "stateful-ast"))]
     pub fn new() -> Self {
         Self {
             scanners: vec![
                 Box::new(secrets::SecretScanner::new()),
                 Box::new(shell_policy::ShellPolicyScanner::new()),
-                Box::new(magika::MagikaScanner::new()),
-            ],
-        }
-    }
-
-    #[cfg(feature = "stateful-ast")]
-    pub fn new() -> Self {
-        let tracker = std::sync::Arc::new(state::StateTracker::new());
-        Self {
-            scanners: vec![
-                Box::new(secrets::SecretScanner::new()),
-                Box::new(shell_policy::ShellPolicyScanner::with_state(tracker)),
                 Box::new(magika::MagikaScanner::new()),
             ],
         }
@@ -143,31 +129,28 @@ pub fn extract_artifact_refs(req: &CapabilityRequest) -> Vec<ArtifactRef> {
         return Vec::new();
     }
 
-    let operators = ["|", "&&", "||", ";", ">", ">>", "<", "2>", "2>>"];
     let tokens = req.payload.split_whitespace().collect::<Vec<_>>();
+    let command = tokens.first().and_then(|token| clean_token(token));
     let mut refs = Vec::new();
 
-    for token in tokens {
-        let trimmed = token.trim_matches(|c| c == '\'' || c == '"' || c == '`');
-        if trimmed.is_empty()
-            || trimmed.starts_with('-')
-            || operators.contains(&trimmed)
-            || trimmed.contains("://")
-        {
+    for (index, token) in tokens.iter().enumerate() {
+        let Some(candidate) = clean_token(token) else {
+            continue;
+        };
+        if index == 0 {
+            continue;
+        }
+        if !looks_like_artifact_arg(candidate, command) {
             continue;
         }
 
-        if !looks_like_path(trimmed) {
-            continue;
-        }
-
-        let resolved = resolve_path(&req.cwd, trimmed);
+        let resolved = resolve_path(&req.cwd, candidate);
         if refs.iter().any(|existing: &ArtifactRef| existing.resolved_path == resolved) {
             continue;
         }
 
         refs.push(ArtifactRef {
-            original: trimmed.to_string(),
+            original: candidate.to_string(),
             resolved_path: resolved,
             source_capability: req.capability.clone(),
         });
@@ -176,13 +159,42 @@ pub fn extract_artifact_refs(req: &CapabilityRequest) -> Vec<ArtifactRef> {
     refs
 }
 
-fn looks_like_path(token: &str) -> bool {
-    token.starts_with("./")
+fn clean_token(token: &str) -> Option<&str> {
+    let trimmed = token.trim_matches(|c| c == '\'' || c == '"' || c == '`');
+    let trimmed = trimmed.trim_end_matches([';', ',', ')', '(']);
+    let trimmed = trimmed
+        .split(['>', '<', '|', '&'])
+        .next()
+        .unwrap_or(trimmed)
+        .trim();
+
+    if trimmed.is_empty()
+        || trimmed.starts_with('-')
+        || matches!(trimmed, "|" | "&&" | "||" | ";")
+        || trimmed.contains("://")
+    {
+        return None;
+    }
+
+    Some(trimmed)
+}
+
+fn looks_like_artifact_arg(token: &str, command: Option<&str>) -> bool {
+    if token.starts_with("./")
         || token.starts_with("../")
         || token.starts_with('/')
         || token.starts_with('~')
         || token.contains('/')
         || token.contains('.')
+    {
+        return true;
+    }
+
+    if token.chars().all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-')) {
+        return matches!(command, Some("python" | "python3" | "bash" | "sh" | "zsh" | "source"));
+    }
+
+    false
 }
 
 fn resolve_path(cwd: &str, token: &str) -> String {
@@ -320,6 +332,22 @@ mod tests {
             "/tmp/workspace",
         ));
         assert!(refs.is_empty());
+    }
+
+    #[test]
+    fn resolves_bare_relative_artifacts_against_cwd() {
+        let refs = extract_artifact_refs(&request("terminal.exec", "python payload", "/tmp/workspace"));
+        assert_eq!(refs[0].resolved_path, "/tmp/workspace/payload");
+    }
+
+    #[test]
+    fn strips_attached_shell_punctuation() {
+        let refs = extract_artifact_refs(&request(
+            "terminal.exec",
+            "chmod +x ./tool;",
+            "/tmp/workspace",
+        ));
+        assert_eq!(refs[0].resolved_path, "/tmp/workspace/tool");
     }
 
     #[test]

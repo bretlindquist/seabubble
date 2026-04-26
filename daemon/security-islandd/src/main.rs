@@ -472,7 +472,7 @@ fn build_incident(
         filter_results: FilterResults {
             regex: template.regex,
             bash_ast: template.bash_ast,
-            magika: None,
+            magika: template.magika,
             llm: None,
         },
         created_at: now_rfc3339()?,

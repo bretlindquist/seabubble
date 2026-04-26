@@ -1,7 +1,5 @@
 use crate::scanners::{IncidentTemplate, Scanner, ScannerStage};
 use shared::{control::AllowedAction, CapabilityRequest, IncidentState, Severity};
-use std::sync::Arc;
-use super::state::StateTracker;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Token {
@@ -173,19 +171,11 @@ pub fn parse(tokens: Vec<Token>) -> Ast {
     Ast { pipelines }
 }
 
-pub struct ShellPolicyScanner {
-    tracker: Arc<StateTracker>,
-}
+pub struct ShellPolicyScanner;
 
 impl ShellPolicyScanner {
     pub fn new() -> Self {
-        Self {
-            tracker: Arc::new(StateTracker::new()),
-        }
-    }
-
-    pub fn with_state(tracker: Arc<StateTracker>) -> Self {
-        Self { tracker }
+        Self
     }
 }
 
@@ -204,7 +194,7 @@ impl Scanner for ShellPolicyScanner {
         let tokens = tokenize(&req.payload);
         let ast = parse(tokens);
 
-        let Some((state, risk, summary)) = summarize_shell_ast(&ast, &self.tracker) else {
+        let Some((state, risk, summary)) = summarize_shell_ast(&ast) else {
             return Vec::new();
         };
 
@@ -241,37 +231,8 @@ impl Scanner for ShellPolicyScanner {
     }
 }
 
-fn summarize_shell_ast(ast: &Ast, tracker: &StateTracker) -> Option<(IncidentState, u8, String)> {
+fn summarize_shell_ast(ast: &Ast) -> Option<(IncidentState, u8, String)> {
     for pipeline in &ast.pipelines {
-        for cmd in &pipeline.commands {
-            if cmd.args.is_empty() {
-                continue;
-            }
-            let bin = &cmd.args[0];
-
-            if matches!(bin.as_str(), "curl" | "wget") {
-                let mut download_target = None;
-                for (i, arg) in cmd.args.iter().enumerate() {
-                    if (arg == "-o" || arg == "-O" || arg == "--output") && i + 1 < cmd.args.len() {
-                        download_target = Some(cmd.args[i+1].clone());
-                    }
-                }
-                if let Some(target) = download_target {
-                    tracker.record_download(target);
-                }
-            }
-
-            if tracker.is_downloaded(bin) || (cmd.args.len() > 1 && matches!(bin.as_str(), "bash" | "sh" | "zsh") && tracker.is_downloaded(&cmd.args[1])) {
-                return Some((
-                    IncidentState::PendingDecision,
-                    95,
-                    format!("command:execution_of_downloaded_file {}", bin),
-                ));
-            }
-            
-            tracker.record_execution(bin.clone());
-        }
-
         if pipeline.commands.len() >= 2 {
             let first = &pipeline.commands[0];
             let last = &pipeline.commands[pipeline.commands.len() - 1];
@@ -382,17 +343,6 @@ mod tests {
         assert_eq!(finding.rule_id, "SI-TERM-01");
         assert!(matches!(finding.state, IncidentState::PendingDecision));
         assert_eq!(finding.bash_ast.as_deref(), Some("pipeline:curl|sh"));
-    }
-
-    #[test]
-    fn tracks_download_and_exec() {
-        let tracker = Arc::new(StateTracker::new());
-        let scanner = ShellPolicyScanner::with_state(tracker);
-        
-        assert!(scanner.scan(&request("curl -O payload.sh")).is_empty());
-
-        let finding = scanner.scan(&request("bash payload.sh")).into_iter().next().expect("expected finding");
-        assert_eq!(finding.bash_ast.as_deref(), Some("command:execution_of_downloaded_file bash"));
     }
 
     #[test]

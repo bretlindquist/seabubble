@@ -29,9 +29,11 @@ impl Default for SecretScanner {
 }
 
 impl Scanner for SecretScanner {
-    fn scan(&self, req: &CapabilityRequest) -> Option<IncidentTemplate> {
+    fn scan(&self, req: &CapabilityRequest) -> Vec<IncidentTemplate> {
+        let mut findings = Vec::new();
+
         if req.capability == "browser.eval" && self.browser_secret_regex.is_match(&req.payload) {
-            return Some(IncidentTemplate {
+            findings.push(IncidentTemplate {
                 stage: ScannerStage::PreForwardBlocking,
                 state: IncidentState::PendingDecision,
                 severity: Severity::Critical,
@@ -42,8 +44,9 @@ impl Scanner for SecretScanner {
                     "browser.eval payload matched secret access pattern: {}",
                     req.payload
                 )],
-                regex: Some(self.browser_secret_regex.as_str().to_string()),
+                regex: Some("matched browser secret access pattern".to_string()),
                 bash_ast: None,
+                magika: None,
                 allowed_actions: vec![
                     AllowedAction::AllowOnce,
                     AllowedAction::ContinueWatched,
@@ -58,7 +61,7 @@ impl Scanner for SecretScanner {
             "terminal.read_file" | "terminal.exec" | "terminal.send_text"
         ) && self.terminal_secret_regex.is_match(&req.payload)
         {
-            return Some(IncidentTemplate {
+            findings.push(IncidentTemplate {
                 stage: ScannerStage::PreForwardFast,
                 state: IncidentState::Watch,
                 severity: Severity::Medium,
@@ -69,14 +72,15 @@ impl Scanner for SecretScanner {
                     "payload matched sensitive path or token indicator: {}",
                     req.payload
                 )],
-                regex: Some(self.terminal_secret_regex.as_str().to_string()),
+                regex: Some("matched sensitive path or token indicator".to_string()),
                 bash_ast: None,
+                magika: None,
                 allowed_actions: vec![AllowedAction::ContinueWatched, AllowedAction::Kill],
             });
         }
 
         if req.capability == "browser.eval" {
-            return Some(IncidentTemplate {
+            findings.push(IncidentTemplate {
                 stage: ScannerStage::PreForwardFast,
                 state: IncidentState::Watch,
                 severity: Severity::Medium,
@@ -89,11 +93,12 @@ impl Scanner for SecretScanner {
                 )],
                 regex: None,
                 bash_ast: None,
+                magika: None,
                 allowed_actions: vec![AllowedAction::ContinueWatched, AllowedAction::Kill],
             });
         }
 
-        None
+        findings
     }
 }
 
@@ -112,9 +117,11 @@ mod tests {
     #[test]
     fn blocks_browser_cookie_access() {
         let scanner = SecretScanner::new();
-        let finding = scanner.scan(&request("browser.eval", "console.log(document.cookie)"));
-        let finding = finding.expect("expected finding");
-        assert_eq!(finding.rule_id, "SI-BROWSER-01");
+        let findings = scanner.scan(&request("browser.eval", "console.log(document.cookie)"));
+        let finding = findings
+            .into_iter()
+            .find(|finding| finding.rule_id == "SI-BROWSER-01")
+            .expect("expected finding");
         assert!(matches!(finding.state, IncidentState::PendingDecision));
         assert!(finding.regex.is_some());
     }
@@ -122,23 +129,28 @@ mod tests {
     #[test]
     fn watches_dotenv_reads() {
         let scanner = SecretScanner::new();
-        let finding = scanner.scan(&request("terminal.read_file", "cat .env"));
-        let finding = finding.expect("expected finding");
-        assert_eq!(finding.rule_id, "SI-DATA-01");
+        let findings = scanner.scan(&request("terminal.read_file", "cat .env"));
+        let finding = findings
+            .into_iter()
+            .find(|finding| finding.rule_id == "SI-DATA-01")
+            .expect("expected finding");
         assert!(matches!(finding.state, IncidentState::Watch));
     }
 
     #[test]
     fn watches_ssh_key_reads() {
         let scanner = SecretScanner::new();
-        let finding = scanner.scan(&request("terminal.read_file", "cat ~/.ssh/id_rsa"));
-        let finding = finding.expect("expected finding");
+        let findings = scanner.scan(&request("terminal.read_file", "cat ~/.ssh/id_rsa"));
+        let finding = findings
+            .into_iter()
+            .find(|finding| finding.rule_id == "SI-DATA-01")
+            .expect("expected finding");
         assert_eq!(finding.rule_id, "SI-DATA-01");
     }
 
     #[test]
     fn ignores_benign_terminal_payload() {
         let scanner = SecretScanner::new();
-        assert!(scanner.scan(&request("terminal.exec", "ls -la")).is_none());
+        assert!(scanner.scan(&request("terminal.exec", "ls -la")).is_empty());
     }
 }
