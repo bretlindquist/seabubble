@@ -1,0 +1,4 @@
+module SecurityIslandCore {
+    header "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/SecurityIslandCore-Swift.h"
+    requires objc
+}

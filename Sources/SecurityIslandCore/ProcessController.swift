@@ -16,21 +16,25 @@ public struct ProcessController {
     }
     
     /// Freezes the process group immediately.
+    @discardableResult
     public static func pause(_ pgid: pid_t) -> Bool {
         return sendSignal(to: pgid, signal: SIGSTOP)
     }
     
     /// Resumes the process group.
+    @discardableResult
     public static func resume(_ pgid: pid_t) -> Bool {
         return sendSignal(to: pgid, signal: SIGCONT)
     }
     
     /// Requests graceful termination.
+    @discardableResult
     public static func terminate(_ pgid: pid_t) -> Bool {
         return sendSignal(to: pgid, signal: SIGTERM)
     }
     
     /// Forcibly kills the process group.
+    @discardableResult
     public static func forceKill(_ pgid: pid_t) -> Bool {
         return sendSignal(to: pgid, signal: SIGKILL)
     }

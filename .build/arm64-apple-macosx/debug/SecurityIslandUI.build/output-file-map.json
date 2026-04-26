@@ -1,0 +1,29 @@
+{
+  "": {
+    "swift-dependencies": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandUI.build/master.swiftdeps"
+  },
+  "/Users/bretlindquist/.openclaw/workspace/Sources/SecurityIslandUI/ForensicDetailView.swift": {
+    "dependencies": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandUI.build/ForensicDetailView.d",
+    "object": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandUI.build/ForensicDetailView.swift.o",
+    "swiftmodule": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandUI.build/ForensicDetailView~partial.swiftmodule",
+    "swift-dependencies": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandUI.build/ForensicDetailView.swiftdeps"
+  },
+  "/Users/bretlindquist/.openclaw/workspace/Sources/SecurityIslandUI/MainDashboardView.swift": {
+    "dependencies": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandUI.build/MainDashboardView.d",
+    "object": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandUI.build/MainDashboardView.swift.o",
+    "swiftmodule": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandUI.build/MainDashboardView~partial.swiftmodule",
+    "swift-dependencies": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandUI.build/MainDashboardView.swiftdeps"
+  },
+  "/Users/bretlindquist/.openclaw/workspace/Sources/SecurityIslandUI/SidebarView.swift": {
+    "dependencies": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandUI.build/SidebarView.d",
+    "object": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandUI.build/SidebarView.swift.o",
+    "swiftmodule": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandUI.build/SidebarView~partial.swiftmodule",
+    "swift-dependencies": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandUI.build/SidebarView.swiftdeps"
+  },
+  "/Users/bretlindquist/.openclaw/workspace/Sources/SecurityIslandUI/SystemUserService.swift": {
+    "dependencies": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandUI.build/SystemUserService.d",
+    "object": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandUI.build/SystemUserService.swift.o",
+    "swiftmodule": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandUI.build/SystemUserService~partial.swiftmodule",
+    "swift-dependencies": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandUI.build/SystemUserService.swiftdeps"
+  }
+}

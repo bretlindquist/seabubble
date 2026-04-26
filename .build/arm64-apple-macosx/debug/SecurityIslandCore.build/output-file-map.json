@@ -1,0 +1,35 @@
+{
+  "": {
+    "swift-dependencies": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/master.swiftdeps"
+  },
+  "/Users/bretlindquist/.openclaw/workspace/Sources/SecurityIslandCore/DecisionBus.swift": {
+    "dependencies": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/DecisionBus.d",
+    "object": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/DecisionBus.swift.o",
+    "swiftmodule": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/DecisionBus~partial.swiftmodule",
+    "swift-dependencies": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/DecisionBus.swiftdeps"
+  },
+  "/Users/bretlindquist/.openclaw/workspace/Sources/SecurityIslandCore/DemoSeeder.swift": {
+    "dependencies": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/DemoSeeder.d",
+    "object": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/DemoSeeder.swift.o",
+    "swiftmodule": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/DemoSeeder~partial.swiftmodule",
+    "swift-dependencies": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/DemoSeeder.swiftdeps"
+  },
+  "/Users/bretlindquist/.openclaw/workspace/Sources/SecurityIslandCore/Models.swift": {
+    "dependencies": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/Models.d",
+    "object": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/Models.swift.o",
+    "swiftmodule": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/Models~partial.swiftmodule",
+    "swift-dependencies": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/Models.swiftdeps"
+  },
+  "/Users/bretlindquist/.openclaw/workspace/Sources/SecurityIslandCore/ProcessController.swift": {
+    "dependencies": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/ProcessController.d",
+    "object": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/ProcessController.swift.o",
+    "swiftmodule": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/ProcessController~partial.swiftmodule",
+    "swift-dependencies": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/ProcessController.swiftdeps"
+  },
+  "/Users/bretlindquist/.openclaw/workspace/Sources/SecurityIslandCore/SecurityPlugin.swift": {
+    "dependencies": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/SecurityPlugin.d",
+    "object": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/SecurityPlugin.swift.o",
+    "swiftmodule": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/SecurityPlugin~partial.swiftmodule",
+    "swift-dependencies": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/SecurityPlugin.swiftdeps"
+  }
+}
