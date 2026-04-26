@@ -1,8 +1,12 @@
-pub mod mcp;
-mod ui;
-mod core;
+use core::types::{AppMode, AppState, ChatMessage};
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+mod core;
+pub mod mcp;
+mod services;
+mod ui;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  __");
     println!(" >(')____, ");
     println!("   (` =~~/  ");
@@ -10,9 +14,94 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("SeaTurtle V2 Engine Booting...");
     std::thread::sleep(std::time::Duration::from_millis(600));
 
-    // Dummy call to ui::setup_terminal if it doesn't exist
-    // Let's check if it exists in ui/mod.rs. It doesn't seem to.
     ui::setup_terminal()?;
-    
+
+    let mut state = AppState {
+        mode: AppMode::Normal,
+        messages: Vec::new(),
+        input_buffer: String::new(),
+        search_results: Vec::new(),
+        search_index: 0,
+    };
+
+    // Dummy event loop simulation
+    // If the user types `/search` in Insert mode and hits `Enter`
+    if let AppMode::Insert = state.mode {
+        if state.input_buffer.starts_with("/gh-issues") {
+            state.mode = AppMode::Streaming;
+            state.messages.push(core::types::ChatMessage {
+                role: core::types::Role::User,
+                content: state.input_buffer.clone(),
+            });
+            let repo = state.input_buffer.strip_prefix("/gh-issues").unwrap().trim().to_string();
+            let (tx, _rx) = tokio::sync::mpsc::unbounded_channel::<core::types::AppEvent>();
+            tokio::spawn(async move {
+                core::orchestrator::handle_gh_issues(&repo, tx).await;
+            });
+            state.input_buffer.clear();
+        } else if state.input_buffer == "/search" {
+            state.mode = AppMode::Search;
+            state.input_buffer.clear();
+        }
+    } else if let AppMode::Search = state.mode {
+        // In AppMode::Search, Enter performs case-insensitive substring search of input_buffer across state.messages
+        state.search_results.clear();
+        let query = state.input_buffer.to_lowercase();
+        for (i, msg) in state.messages.iter().enumerate() {
+            if msg.content.to_lowercase().contains(&query) {
+                state.search_results.push(i);
+            }
+        }
+        state.search_index = 0;
+        state.mode = AppMode::Normal;
+        println!("Search matches: {}", state.search_results.len());
+    } else if let AppMode::Streaming = state.mode {
+        // If user hits Backspace while streaming
+        let mut _cancel_tx = Some(()); // dummy cancel tx
+                                       // send cancel signal
+        let _ = _cancel_tx.take();
+        state.mode = AppMode::Steering;
+        state.input_buffer.clear();
+    } else if let AppMode::Steering = state.mode {
+        // If user hits Enter while in Steering mode
+        let steer = state.input_buffer.clone();
+        if let Some(msg) = state
+            .messages
+            .iter_mut()
+            .filter(|m| matches!(m.role, core::types::Role::User))
+            .last()
+        {
+            msg.content.push_str(&format!("\n\n[STEER]: {}", steer));
+        }
+        if let Some(last) = state.messages.last() {
+            if matches!(last.role, core::types::Role::Assistant) {
+                state.messages.pop();
+            }
+        }
+        state.mode = AppMode::Streaming;
+        // spawn API call
+    }
+
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<core::types::AppEvent>();
+
+    if std::env::var("TELOXIDE_TOKEN").is_ok() {
+        let bot_tx = tx.clone();
+        tokio::spawn(async move {
+            services::telegram::start_telegram_bot(bot_tx).await;
+        });
+    }
+
+    while let Some(event) = rx.recv().await {
+        match event {
+            core::types::AppEvent::ToolCallResult(_) => {}
+            core::types::AppEvent::TelegramMessage { chat_id, text } => {
+                state.messages.push(core::types::ChatMessage {
+                    role: core::types::Role::User,
+                    content: format!("[Telegram from {}] {}", chat_id, text),
+                });
+            }
+        }
+    }
+
     Ok(())
 }

@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Result, bail};
 use tokio::net::{UnixListener, UnixStream};
 use bytes::BytesMut;
 
@@ -20,7 +20,7 @@ async fn main() -> Result<()> {
                 println!("🔄 Accepted new connection from {:?}", addr);
                 tokio::spawn(async move {
                     if let Err(e) = handle_client(stream).await {
-                        eprintln!("❌ Client error: {}", e);
+                        eprintln!("❌ Client rejected: {}", e);
                     }
                 });
             }
@@ -31,18 +31,23 @@ async fn main() -> Result<()> {
     }
 }
 
-async fn handle_client(_stream: UnixStream) -> Result<()> {
-    // Phase 1: getpeereid validation would go here using nix crate
-    // let creds = stream.peer_cred()?;
-    // println!("Peer UID: {}", creds.uid());
+async fn handle_client(stream: UnixStream) -> Result<()> {
+    // Phase 3: Identity Validation via XNU peer credentials
+    let creds = stream.peer_cred()?;
+    
+    if creds.uid() != 501 {
+        bail!("Unauthorized UID: {}. Only UID 501 is allowed.", creds.uid());
+    }
+
+    println!("✅ Verified peer UID: {}", creds.uid());
+    println!("✅ Verified peer PID: {:?}", creds.pid());
 
     // Phase 1: Zero-copy-ish reading
     let _buffer = BytesMut::with_capacity(8192);
     
     // Simulate reading stream...
-    // In production: read into `buffer`, use `memchr` to find `\n`,
-    // and parse with `simd-json` or `serde_json`
+    // Expected Handshake: {"method": "security.identify", "params": {"agent_id": "...", "session_nonce": "..."}}
     
-    println!("✅ Handled client connection.");
+    println!("✅ Handled authenticated client connection.");
     Ok(())
 }

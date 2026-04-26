@@ -1,11 +1,11 @@
+use crate::core::types::{AppMode, AppState, ChatMessage};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
     text::{Line, Span},
-    widgets::{Block, Paragraph, Borders, Clear},
+    widgets::{Block, Borders, Clear, Paragraph},
     Frame,
 };
-use crate::core::types::{ChatMessage, AppState, AppMode};
 
 pub fn render_markdown(text: &str) -> Vec<Line> {
     let mut lines = Vec::new();
@@ -15,7 +15,10 @@ pub fn render_markdown(text: &str) -> Vec<Line> {
         for (i, part) in parts.into_iter().enumerate() {
             if i % 2 == 1 {
                 // Inside backticks
-                spans.push(Span::styled(part.to_string(), Style::default().fg(Color::Green)));
+                spans.push(Span::styled(
+                    part.to_string(),
+                    Style::default().fg(Color::Green),
+                ));
             } else {
                 // Outside backticks
                 spans.push(Span::raw(part.to_string()));
@@ -46,7 +49,11 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
         .split(popup_layout[1])[1]
 }
 
-pub fn draw_ui<B: ratatui::backend::Backend>(frame: &mut Frame, messages: &[ChatMessage], state: &AppState) {
+pub fn draw_ui<B: ratatui::backend::Backend>(
+    frame: &mut Frame,
+    messages: &[ChatMessage],
+    state: &AppState,
+) {
     // 2. Modify `draw_ui` to split the `frame.size()` into 3 vertical chunks:
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -70,7 +77,7 @@ pub fn draw_ui<B: ratatui::backend::Backend>(frame: &mut Frame, messages: &[Chat
     let chat = Paragraph::new(chat_text).block(Block::default()); // No borders
     frame.render_widget(chat, chunks[1]);
 
-    // 4. Footer: Change the input widget. Single line at the bottom. 
+    // 4. Footer: Change the input widget. Single line at the bottom.
     // It should look like ` [NORMAL] > input_buffer_here ` or ` [STREAMING] ... `.
     // Mocking the input state for conceptual compilation
     let is_streaming = false; // Example state
@@ -79,26 +86,32 @@ pub fn draw_ui<B: ratatui::backend::Backend>(frame: &mut Frame, messages: &[Chat
     } else {
         format!(" [NORMAL] > {} ", "input_buffer_here")
     };
-    
+
     let footer = Paragraph::new(input_text);
     frame.render_widget(footer, chunks[2]);
 
     if let AppMode::PermissionPrompt(ref tool) = state.mode {
         let area = centered_rect(60, 20, frame.size());
-        
+
         let block = Block::default()
             .borders(Borders::ALL)
             .title(" Permission Required ");
-            
+
         let text = vec![
-            Line::from(Span::styled("[WARNING] Destructive Tool Call Requested", Style::default().fg(Color::Red))),
+            Line::from(Span::styled(
+                "[WARNING] Destructive Tool Call Requested",
+                Style::default().fg(Color::Red),
+            )),
             Line::from(format!("Command: {}", tool.name)),
             Line::from(format!("Args: {}", tool.arguments)),
-            Line::from(Span::styled("[A]pprove | [R]eject | [M]odify", Style::default().fg(Color::Yellow))),
+            Line::from(Span::styled(
+                "[A]pprove | [R]eject | [M]odify",
+                Style::default().fg(Color::Yellow),
+            )),
         ];
-        
+
         let paragraph = Paragraph::new(text).block(block);
-        
+
         frame.render_widget(Clear, area);
         frame.render_widget(paragraph, area);
     }

@@ -1,10 +1,10 @@
+use crate::core::types::AppState;
 use ratatui::{
     layout::Alignment,
     style::{Color, Style},
     widgets::{Block, Borders, Paragraph},
     Frame,
 };
-use crate::core::types::AppState;
 
 pub fn draw_status(frame: &mut Frame, _state: &AppState) {
     let area = frame.size();

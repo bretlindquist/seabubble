@@ -1,6 +1,6 @@
+use crate::core::types::{ChatMessage, Role};
 use std::path::Path;
 use tokio::fs;
-use crate::core::types::{ChatMessage, Role};
 
 pub async fn load_system_prompts(workspace: &Path) -> Vec<ChatMessage> {
     let files = [
