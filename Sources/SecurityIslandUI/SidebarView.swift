@@ -12,6 +12,12 @@ public struct SidebarView: View {
     public var body: some View {
         ScrollViewReader { proxy in
             List(selection: $selectedIncidentId) {
+                Section("Settings") {
+                    NavigationLink(value: "__plugin_settings__") {
+                        Label("Plugin Settings", systemImage: "puzzlepiece.extension")
+                    }
+                }
+                
                 Section("Monitored Agents") {
                     ForEach(bus.incidents) { incident in
                         NavigationLink(value: incident.id) {

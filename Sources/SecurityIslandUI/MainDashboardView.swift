@@ -4,6 +4,7 @@ import SecurityIslandCore
 public struct MainDashboardView: View {
     @EnvironmentObject var bus: DecisionBus
     @EnvironmentObject var userService: SystemUserService
+    @EnvironmentObject var daemonClient: DaemonControlClient
     @State private var selectedIncidentId: String?
     
     public init() {}
@@ -13,7 +14,9 @@ public struct MainDashboardView: View {
             SidebarView(selectedIncidentId: $selectedIncidentId)
                 .frame(minWidth: 280)
         } detail: {
-            if let id = selectedIncidentId, let incident = bus.incidents.first(where: { $0.id == id }) {
+            if selectedIncidentId == "__plugin_settings__" {
+                PluginSettingsView()
+            } else if let id = selectedIncidentId, let incident = bus.incidents.first(where: { $0.id == id }) {
                 ForensicDetailView(incident: incident)
             } else {
                 VStack(spacing: 24) {
@@ -35,6 +38,21 @@ public struct MainDashboardView: View {
         }
         .toolbar {
             ToolbarItem(placement: .status) {
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(connectionColor)
+                        .frame(width: 8, height: 8)
+                    Text(daemonClient.connectionState.rawValue.capitalized)
+                        .font(.system(.subheadline, design: .monospaced))
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Color(NSColor.controlBackgroundColor))
+                .clipShape(Capsule())
+                .help(daemonClient.lastError ?? "Security Island daemon connection")
+            }
+            
+            ToolbarItem(placement: .status) {
                 HStack {
                     Image(systemName: userService.isVisible ? "lock.open.fill" : "lock.fill")
                         .foregroundStyle(userService.isVisible ? .red : .green)
@@ -53,6 +71,19 @@ public struct MainDashboardView: View {
                 }
                 .help("Click to reveal/hide Host OS Identity")
             }
+        }
+    }
+    
+    private var connectionColor: Color {
+        switch daemonClient.connectionState {
+        case .connected:
+            return .green
+        case .connecting, .reconnecting:
+            return .yellow
+        case .failed:
+            return .red
+        case .disconnected:
+            return .gray
         }
     }
 }
