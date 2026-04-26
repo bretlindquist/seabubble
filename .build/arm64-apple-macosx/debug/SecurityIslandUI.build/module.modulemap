@@ -1,4 +1,0 @@
-module SecurityIslandUI {
-    header "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandUI.build/SecurityIslandUI-Swift.h"
-    requires objc
-}
