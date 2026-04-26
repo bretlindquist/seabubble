@@ -32,6 +32,10 @@ You are ready to start **Chunk 3**. Here is what is left in the pipeline:
   - Build `magika.rs` in the daemon.
   - Ensure the normalizer extracts file paths from commands so Magika scans the *files*, not the raw command strings.
 
+### Architectural Flaws (Identified during Chunk 3 audit)
+- **Direct Socket Bypass**: If file permissions aren't properly isolated, the agent process could write directly to the real upstream cmux socket, completely bypassing the security island daemon.
+- **Stateless Scanning**: The current scanner relies on regex and basic string matching. It cannot catch multi-step attacks (e.g., `download payload -> chmod +x -> execute`) because it lacks AST parsing and state tracking across multiple commands.
+
 ### Chunk 5: Hardening & Forwarding
 - **Tasks:**
   - **The final cmux link:** Forward approved capability traffic to the *real* cmux upstream socket.
