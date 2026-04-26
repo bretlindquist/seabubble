@@ -1,6 +1,6 @@
-/Users/bretlindquist/.openclaw/workspace/daemon/target/debug/deps/shared-51fa2b875aec1506.d: shared/src/lib.rs shared/src/control.rs Cargo.toml
+/Users/bretlindquist/git/seabubble/daemon/target/debug/deps/shared-51fa2b875aec1506.d: shared/src/lib.rs shared/src/control.rs Cargo.toml
 
-/Users/bretlindquist/.openclaw/workspace/daemon/target/debug/deps/libshared-51fa2b875aec1506.rmeta: shared/src/lib.rs shared/src/control.rs Cargo.toml
+/Users/bretlindquist/git/seabubble/daemon/target/debug/deps/libshared-51fa2b875aec1506.rmeta: shared/src/lib.rs shared/src/control.rs Cargo.toml
 
 shared/src/lib.rs:
 shared/src/control.rs:
