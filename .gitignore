@@ -1,0 +1,35 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# Sensitive Info & Keys
+.env
+.env.*
+*.pem
+*.key
+*.cert
+*.crt
+*.ca-bundle
+*.p12
+*.pfx
+id_rsa*
+*.keystore
+*.jks
+secrets.json
+credentials.json
+*.ovpn
+
+# Project Specific
+/docs/
+agents.md
+AGENTS.md
