@@ -139,9 +139,12 @@ public struct ForensicDetailView: View {
         if incident.state == .safe || incident.state == .resolvedAllowed { return .green }
         return incident.severity >= .high ? .red : .yellow
     }
-    
+
     private func apply(_ action: AllowedAction) {
         bus.applyDecision(incidentId: incident.id, action: action)
+        
+        // In a full production build, we would route this through the DaemonControlClient
+        // client.sendDecision(action: action, incidentId: incident.id)
     }
     
     private func actionButton(_ title: String, icon: String, color: Color, action: @escaping () -> Void) -> some View {

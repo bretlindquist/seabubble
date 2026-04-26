@@ -6,48 +6,62 @@ use bytes::BytesMut;
 async fn main() -> Result<()> {
     println!("🏝 Security Island Daemon Starting...");
 
-    let socket_path = "/tmp/cmux.sock";
+    // 1. Hot Path: Agent Capability Intercept
+    let cmux_socket = "/tmp/cmux.sock";
+    let _ = std::fs::remove_file(cmux_socket);
+    let agent_listener = UnixListener::bind(cmux_socket)?;
     
-    // Clean up old socket if it exists
-    let _ = std::fs::remove_file(socket_path);
+    // 2. Control Path: SwiftUI Decision Bus
+    let control_socket = "/tmp/security-island-control.sock";
+    let _ = std::fs::remove_file(control_socket);
+    let control_listener = UnixListener::bind(control_socket)?;
 
-    let listener = UnixListener::bind(socket_path)?;
-    println!("🎧 Listening for cmux capabilities on {}", socket_path);
+    println!("🎧 Listening for cmux capabilities on {}", cmux_socket);
+    println!("🖥  Listening for UI decisions on {}", control_socket);
 
     loop {
-        match listener.accept().await {
-            Ok((stream, addr)) => {
-                println!("🔄 Accepted new connection from {:?}", addr);
+        tokio::select! {
+            Ok((stream, _)) = agent_listener.accept() => {
                 tokio::spawn(async move {
-                    if let Err(e) = handle_client(stream).await {
-                        eprintln!("❌ Client rejected: {}", e);
+                    if let Err(e) = handle_agent_client(stream).await {
+                        eprintln!("❌ Agent connection rejected: {}", e);
                     }
                 });
             }
-            Err(e) => {
-                eprintln!("⚠️ Accept failed: {}", e);
+            Ok((stream, _)) = control_listener.accept() => {
+                tokio::spawn(async move {
+                    if let Err(e) = handle_ui_client(stream).await {
+                        eprintln!("❌ UI control connection rejected: {}", e);
+                    }
+                });
             }
         }
     }
 }
 
-async fn handle_client(stream: UnixStream) -> Result<()> {
-    // Phase 3: Identity Validation via XNU peer credentials
+async fn handle_agent_client(stream: UnixStream) -> Result<()> {
     let creds = stream.peer_cred()?;
-    
     if creds.uid() != 501 {
         bail!("Unauthorized UID: {}. Only UID 501 is allowed.", creds.uid());
     }
 
-    println!("✅ Verified peer UID: {}", creds.uid());
-    println!("✅ Verified peer PID: {:?}", creds.pid());
-
-    // Phase 1: Zero-copy-ish reading
     let _buffer = BytesMut::with_capacity(8192);
+    // In prod: Read agent JSON, evaluate policy.
+    // If blocked, send Incident to UI over control socket.
     
-    // Simulate reading stream...
-    // Expected Handshake: {"method": "security.identify", "params": {"agent_id": "...", "session_nonce": "..."}}
+    Ok(())
+}
+
+async fn handle_ui_client(stream: UnixStream) -> Result<()> {
+    let creds = stream.peer_cred()?;
+    if creds.uid() != 501 {
+        bail!("Unauthorized UI process UID: {}.", creds.uid());
+    }
     
-    println!("✅ Handled authenticated client connection.");
+    println!("🖥  SwiftUI Dashboard connected.");
+    
+    // In prod: Read from stream for `DecisionCommand` objects sent by Swift UI.
+    // Forward decisions back to the blocked agent tasks.
+    
     Ok(())
 }

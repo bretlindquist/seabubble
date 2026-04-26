@@ -7,14 +7,13 @@ struct SecurityIslandApp: App {
     @StateObject private var bus = DecisionBus()
     @StateObject private var userService = SystemUserService()
     
-    // Hold a strong reference to the broker so it stays alive
-    private var broker: CmuxSocketBroker?
+    // The client that talks to the Rust Daemon
+    private var daemonClient: DaemonControlClient?
 
     init() {
-        // Initialize the broker with the bus instance before the views load
         let busInstance = DecisionBus()
         _bus = StateObject(wrappedValue: busInstance)
-        self.broker = CmuxSocketBroker(bus: busInstance)
+        self.daemonClient = DaemonControlClient(bus: busInstance)
     }
 
     var body: some Scene {
@@ -25,8 +24,8 @@ struct SecurityIslandApp: App {
                 .onAppear {
                     setupSwarmPlugins()
                     
-                    // Start the UNIX Socket MITM Proxy
-                    broker?.start()
+                    // Connect to Rust Daemon over control socket
+                    daemonClient?.start()
                     
                     Task {
                         // Seed mock data for hackathon demo

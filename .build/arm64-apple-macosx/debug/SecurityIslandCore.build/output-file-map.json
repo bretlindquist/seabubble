@@ -2,11 +2,11 @@
   "": {
     "swift-dependencies": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/master.swiftdeps"
   },
-  "/Users/bretlindquist/.openclaw/workspace/Sources/SecurityIslandCore/CmuxSocketBroker.swift": {
-    "dependencies": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/CmuxSocketBroker.d",
-    "object": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/CmuxSocketBroker.swift.o",
-    "swiftmodule": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/CmuxSocketBroker~partial.swiftmodule",
-    "swift-dependencies": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/CmuxSocketBroker.swiftdeps"
+  "/Users/bretlindquist/.openclaw/workspace/Sources/SecurityIslandCore/DaemonControlClient.swift": {
+    "dependencies": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/DaemonControlClient.d",
+    "object": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/DaemonControlClient.swift.o",
+    "swiftmodule": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/DaemonControlClient~partial.swiftmodule",
+    "swift-dependencies": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/DaemonControlClient.swiftdeps"
   },
   "/Users/bretlindquist/.openclaw/workspace/Sources/SecurityIslandCore/DecisionBus.swift": {
     "dependencies": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/DecisionBus.d",
