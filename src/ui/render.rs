@@ -82,9 +82,9 @@ pub fn draw_ui<B: ratatui::backend::Backend>(
     // Mocking the input state for conceptual compilation
     let is_streaming = false; // Example state
     let input_text = if is_streaming {
-        " [STREAMING] ... ".to_string()
+        format!(" [STREAMING] ... | Tokens: {}", state.token_estimate)
     } else {
-        format!(" [NORMAL] > {} ", "input_buffer_here")
+        format!(" [NORMAL] > {} | Tokens: {}", "input_buffer_here", state.token_estimate)
     };
 
     let footer = Paragraph::new(input_text);

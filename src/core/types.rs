@@ -5,6 +5,7 @@ pub enum AppMode {
     Status,
     Streaming,
     Steering,
+    Voice,
     PermissionPrompt(ToolCall),
 }
 
@@ -32,6 +33,7 @@ pub struct ToolResult {
 
 pub enum AppEvent {
     ToolCallResult(ToolResult),
+    TokenReceived(String),
     TelegramMessage { chat_id: i64, text: String },
     ContextWarning,
     HistoryCompacted(Vec<ChatMessage>),

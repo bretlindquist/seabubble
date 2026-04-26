@@ -11,19 +11,26 @@ public struct MainDashboardView: View {
     public var body: some View {
         NavigationSplitView {
             SidebarView(selectedIncidentId: $selectedIncidentId)
-                .frame(minWidth: 250)
+                .frame(minWidth: 280)
         } detail: {
             if let id = selectedIncidentId, let incident = bus.incidents.first(where: { $0.id == id }) {
                 ForensicDetailView(incident: incident)
             } else {
-                VStack(spacing: 16) {
+                VStack(spacing: 24) {
                     Image(systemName: "shield.lefthalf.filled")
-                        .font(.system(size: 64))
-                        .foregroundStyle(.secondary)
-                    Text("Select an incident to view forensics.")
-                        .font(.headline)
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 80, weight: .light))
+                        .foregroundStyle(Color.accentColor.opacity(0.8))
+                    
+                    VStack(spacing: 8) {
+                        Text("Security Island")
+                            .font(.title.bold())
+                        Text("Waiting for cmux telemetry...")
+                            .font(.body)
+                            .foregroundStyle(.secondary)
+                    }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color(NSColor.underPageBackgroundColor))
             }
         }
         .toolbar {
@@ -31,18 +38,20 @@ public struct MainDashboardView: View {
                 HStack {
                     Image(systemName: userService.isVisible ? "lock.open.fill" : "lock.fill")
                         .foregroundStyle(userService.isVisible ? .red : .green)
+                        .imageScale(.small)
                     Text(userService.displayUsername)
-                        .font(.system(.body, design: .monospaced))
+                        .font(.system(.subheadline, design: .monospaced))
                 }
-                .padding(6)
-                .background(Color.gray.opacity(0.2))
-                .cornerRadius(6)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Color(NSColor.controlBackgroundColor))
+                .clipShape(Capsule())
                 .onTapGesture {
-                    withAnimation {
+                    withAnimation(.snappy) {
                         userService.toggleVisibility()
                     }
                 }
-                .help("Click to reveal/hide OS User")
+                .help("Click to reveal/hide Host OS Identity")
             }
         }
     }

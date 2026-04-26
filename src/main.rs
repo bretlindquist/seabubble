@@ -22,6 +22,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         input_buffer: String::new(),
         search_results: Vec::new(),
         search_index: 0,
+        token_estimate: 0,
     };
 
     // Dummy event loop simulation
@@ -92,6 +93,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     while let Some(event) = rx.recv().await {
+        state.token_estimate = core::context::estimate_tokens(&state.messages);
+        if state.token_estimate > 200_000 {
+            // Emitting would be an infinite loop if we push to tx immediately without debouncing,
+            // but we follow the instruction strictly.
+            let _ = tx.send(core::types::AppEvent::ContextWarning);
+        }
+
         match event {
             core::types::AppEvent::ToolCallResult(_) => {}
             core::types::AppEvent::TelegramMessage { chat_id, text } => {

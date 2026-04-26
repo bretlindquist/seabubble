@@ -15,24 +15,25 @@ public struct ForensicDetailView: View {
                 
                 // HEADER
                 HStack {
-                    VStack(alignment: .leading) {
+                    VStack(alignment: .leading, spacing: 4) {
                         Text("Incident: \(incident.id)")
                             .font(.title2.bold())
                         Text("Agent: \(incident.actor.agentId) | Process: \(incident.actor.process)")
+                            .font(.subheadline)
                             .foregroundStyle(.secondary)
                         Text("Workspace: \(incident.cmux.workspaceId) | Surface: \(incident.cmux.surfaceId)")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.tertiary)
                     }
                     Spacer()
-                    VStack(alignment: .trailing) {
-                        Text(incident.state.rawValue.uppercased())
+                    VStack(alignment: .trailing, spacing: 6) {
+                        Text(incident.state.rawValue.replacingOccurrences(of: "_", with: " ").uppercased())
                             .font(.caption.bold())
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
                             .background(stateColor.opacity(0.2))
                             .foregroundStyle(stateColor)
-                            .cornerRadius(4)
+                            .clipShape(Capsule())
                         
                         Text("PGID: \(incident.pgid)")
                             .font(.caption.monospacedDigit())
