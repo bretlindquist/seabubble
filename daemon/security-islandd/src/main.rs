@@ -174,24 +174,33 @@ async fn main() -> Result<()> {
 }
 
 async fn handle_agent_client(stream: UnixStream, state: Arc<DaemonState>) -> Result<()> {
-    // TODO (Post-Demo Hardening): Implement Darwin audit_token_t FFI here.
-    // We need to replace `peer_cred()` with `getsockopt` using `SOL_LOCAL` / `LOCAL_PEERTOKEN` 
-    // to retrieve the audit_token_t. This will provide un-spoofable process lineage (pid, uid, pgid)
-    // and protect against PID reuse or credential spoofing attacks.
-    let creds = stream.peer_cred()?;
+    #[cfg(target_os = "macos")]
+    let (peer_pid, peer_uid, peer_gid) = {
+        let token = shared::darwin::get_audit_token(&stream)?;
+        let uid = shared::darwin::get_uid_from_token(token);
+        let pid = shared::darwin::get_pid_from_token(token);
+        let gid = shared::darwin::get_gid_from_token(token);
+        (pid, uid, gid)
+    };
 
-    if creds.uid() != state.allowed_uid {
+    #[cfg(not(target_os = "macos"))]
+    let (peer_pid, peer_uid, peer_gid) = {
+        let creds = stream.peer_cred()?;
+        (creds.pid().unwrap_or(0), creds.uid(), creds.gid())
+    };
+
+    if peer_uid != state.allowed_uid {
         bail!(
             "Unauthorized UID: {}. Only UID {} is allowed.",
-            creds.uid(),
+            peer_uid,
             state.allowed_uid
         );
     }
 
     let mut identity = ConnectionIdentity {
-        peer_pid: creds.pid().unwrap_or(0),
-        peer_uid: creds.uid(),
-        peer_gid: creds.gid(),
+        peer_pid,
+        peer_uid,
+        peer_gid,
         session_nonce_validated: false,
         public_broker_mode: false,
     };

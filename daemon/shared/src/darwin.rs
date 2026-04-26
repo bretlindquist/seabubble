@@ -1,7 +1,5 @@
 #[cfg(target_os = "macos")]
 use std::os::unix::io::AsRawFd;
-#[cfg(target_os = "macos")]
-use std::os::unix::net::UnixStream;
 
 #[cfg(target_os = "macos")]
 #[repr(C)]
@@ -14,11 +12,12 @@ pub struct audit_token_t {
 extern "C" {
     pub fn audit_token_to_pid(atoken: audit_token_t) -> libc::pid_t;
     pub fn audit_token_to_euid(atoken: audit_token_t) -> libc::uid_t;
+    pub fn audit_token_to_egid(atoken: audit_token_t) -> libc::gid_t;
     pub fn audit_token_to_auid(atoken: audit_token_t) -> libc::uid_t;
 }
 
 #[cfg(target_os = "macos")]
-pub fn get_audit_token(stream: &UnixStream) -> std::io::Result<audit_token_t> {
+pub fn get_audit_token<T: AsRawFd>(stream: &T) -> std::io::Result<audit_token_t> {
     use std::mem;
 
     let fd = stream.as_raw_fd();
@@ -50,4 +49,9 @@ pub fn get_pid_from_token(token: audit_token_t) -> libc::pid_t {
 #[cfg(target_os = "macos")]
 pub fn get_uid_from_token(token: audit_token_t) -> libc::uid_t {
     unsafe { audit_token_to_euid(token) }
+}
+
+#[cfg(target_os = "macos")]
+pub fn get_gid_from_token(token: audit_token_t) -> libc::gid_t {
+    unsafe { audit_token_to_egid(token) }
 }
