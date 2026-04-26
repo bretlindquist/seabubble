@@ -2,8 +2,10 @@ use anyhow::{Context, Result};
 use shared::IdentityRecord;
 use std::env;
 use std::os::unix::fs::PermissionsExt;
+use std::os::unix::process::CommandExt;
 use std::process::Command;
 use uuid::Uuid;
+use sha2::{Sha256, Digest};
 
 fn main() -> Result<()> {
     // 1. Parse CLI arguments for the target agent command
@@ -23,7 +25,7 @@ fn main() -> Result<()> {
     
     // 3. Secure Directory Creation (0700)
     let uid = unsafe { libc::getuid() };
-    let socket_dir = format!("/tmp/security-island/{}/{}", uid, agent_id);
+    let socket_dir = format!("/tmp/security-island/{}/agents/{}", uid, agent_id);
     
     std::fs::create_dir_all(&socket_dir)
         .with_context(|| format!("Failed to create socket directory: {}", socket_dir))?;
@@ -36,20 +38,39 @@ fn main() -> Result<()> {
 
     println!("🔒 Established secure boundary at: {}", socket_dir);
 
-    // 4. Persist short-lived identity record for daemon-side nonce validation
-    let identity_record = IdentityRecord {
+    // 4. Hash the nonce before persisting to disk
+    let mut hasher = Sha256::new();
+    hasher.update(session_nonce.to_string().as_bytes());
+    let nonce_hash = hex::encode(hasher.finalize());
+
+    // 5. Persist short-lived identity record for daemon-side nonce validation
+    let mut identity_record = IdentityRecord {
         agent_id: agent_id.to_string(),
-        session_nonce: session_nonce.to_string(),
+        session_nonce: nonce_hash, // Store HASH only
         uid,
         socket_dir: socket_dir.clone(),
+        socket_path: socket_path.clone(),
+        pid: None,
+        pgid: None,
     };
 
     let identity_path = format!("{}/identity.json", socket_dir);
     let identity_json = serde_json::to_vec_pretty(&identity_record)?;
     std::fs::write(&identity_path, identity_json)
         .with_context(|| format!("Failed to write identity file: {}", identity_path))?;
+        
+    // 6. Spawn the Daemon attached to this specific agent socket
+    // In a full production daemon, this would be an RPC call to a master daemon.
+    // For this architecture phase, the launcher spawns the daemon per-agent.
+    let mut daemon_child = Command::new("security-islandd")
+        .env("SECURITY_ISLAND_BIND_PATH", &socket_path)
+        .spawn()
+        .with_context(|| "Failed to spawn security-islandd. Ensure it is in PATH.")?;
     
-    // 5. Secure Subprocess Spawning (Environment Cleansing)
+    // Give the daemon a moment to bind the socket
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    
+    // 7. Secure Subprocess Spawning (Environment Cleansing)
     let mut child = Command::new(target_executable)
         .args(target_args)
         .env_clear() // Drop inherited secrets (like AWS keys or global PATH)
@@ -60,16 +81,25 @@ fn main() -> Result<()> {
         .env("CMUX_SOCKET_PATH", &socket_path)
         .env("SECURITY_ISLAND_AGENT_ID", agent_id.to_string())
         .env("SECURITY_ISLAND_SESSION_NONCE", session_nonce.to_string())
+        .process_group(0)
         .spawn()
         .with_context(|| format!("Failed to spawn agent process: {}", target_executable))?;
 
-    println!("🛡️  Agent {} spawned successfully with PID: {}", agent_id, child.id());
+    let child_pid = child.id();
+    identity_record.pid = Some(child_pid);
+    identity_record.pgid = Some(child_pid);
+    let identity_json = serde_json::to_vec_pretty(&identity_record)?;
+    std::fs::write(&identity_path, identity_json)
+        .with_context(|| format!("Failed to update identity file: {}", identity_path))?;
 
-    // 6. Wait for agent to exit naturally
+    println!("🛡️  Agent {} spawned successfully with PID/PGID: {}", agent_id, child_pid);
+
+    // 8. Wait for agent to exit naturally
     let status = child.wait()?;
     println!("🛑 Agent {} exited with status: {}", agent_id, status);
 
-    // 7. Cleanup secure socket directory
+    // 9. Cleanup secure socket directory and kill daemon
+    let _ = daemon_child.kill();
     let _ = std::fs::remove_dir_all(&socket_dir);
     
     Ok(())

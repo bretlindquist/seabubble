@@ -14,3 +14,4 @@ bytes = "1.5"
 uuid = { version = "1.7", features = ["v4", "fast-rng", "macro-diagnostics"] }
 nix = { version = "0.28", features = ["net", "socket", "uio"] }
 anyhow = "1.0"
+sha2 = "0.10"
