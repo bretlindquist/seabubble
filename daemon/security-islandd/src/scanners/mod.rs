@@ -1,6 +1,7 @@
 pub mod magika;
 pub mod secrets;
 pub mod shell_policy;
+pub mod wasm;
 
 use plugin_api::{
     candidate_precedes, CapabilityRequest, FindingEffect, PolicyDecision, Scanner,
@@ -12,13 +13,19 @@ pub struct Pipeline {
 
 impl Pipeline {
     pub fn new() -> Self {
-        Self {
-            scanners: vec![
-                Box::new(secrets::SecretScanner::new()),
-                Box::new(shell_policy::ShellPolicyScanner::new()),
-                Box::new(magika::MagikaScanner::new()),
-            ],
+        let mut scanners: Vec<Box<dyn Scanner>> = vec![
+            Box::new(secrets::SecretScanner::new()),
+            Box::new(shell_policy::ShellPolicyScanner::new()),
+            Box::new(magika::MagikaScanner::new()),
+        ];
+
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
+        let plugin_dir = std::path::PathBuf::from(home).join(".seabubble").join("plugins");
+        for scanner in wasm::load_plugins_from_dir(&plugin_dir) {
+            scanners.push(Box::new(scanner));
         }
+
+        Self { scanners }
     }
 
     pub fn classify(&self, req: &CapabilityRequest) -> PolicyDecision {

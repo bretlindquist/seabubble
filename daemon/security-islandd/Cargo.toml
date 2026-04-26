@@ -17,6 +17,7 @@ shared = { path = "../shared" }
 regex = "1.10"
 arc-swap = "1.9.1"
 plugin-api = { version = "0.1.0", path = "../plugin-api" }
+extism = "1.21.0"
 
 [features]
 stateful-ast = []
