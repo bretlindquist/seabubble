@@ -1,6 +1,10 @@
+mod scanners;
+
 use anyhow::{bail, Context, Result};
+use scanners::{Pipeline, PolicyDecision, IncidentTemplate};
 use serde::Serialize;
 use shared::control::{AllowedAction, ControlMessage, DecisionAck, DecisionCommand};
+
 use shared::{
     hash_session_nonce, ActorContext, CapabilityRequest, CmuxContext, FilterResults,
     IdentityRecord, Incident, IncidentState, RegistrationAck, RegistrationMessage,
@@ -24,7 +28,6 @@ pub struct ConnectionIdentity {
     pub session_nonce_validated: bool,
 }
 
-#[derive(Debug)]
 struct DaemonState {
     allowed_uid: u32,
     demo_mode: bool,
@@ -33,6 +36,7 @@ struct DaemonState {
     pending_incidents: Mutex<HashMap<String, Incident>>,
     ui_clients: Mutex<Vec<mpsc::UnboundedSender<ControlMessage>>>,
     incident_counter: AtomicU64,
+    scanners: Pipeline,
 }
 
 impl DaemonState {
@@ -45,6 +49,7 @@ impl DaemonState {
             pending_incidents: Mutex::new(HashMap::new()),
             ui_clients: Mutex::new(Vec::new()),
             incident_counter: AtomicU64::new(1),
+            scanners: Pipeline::new(),
         }
     }
 
@@ -61,27 +66,6 @@ struct AuditEvent<'a> {
     uid: u32,
     incident_id: Option<&'a str>,
     agent_id: Option<&'a str>,
-}
-
-#[derive(Debug)]
-enum PolicyDecision {
-    Allow {
-        reason: &'static str,
-    },
-    Watch(IncidentTemplate),
-    Block(IncidentTemplate),
-}
-
-#[derive(Debug)]
-struct IncidentTemplate {
-    state: IncidentState,
-    severity: Severity,
-    reason: &'static str,
-    rule_id: &'static str,
-    risk: u8,
-    evidence: Vec<String>,
-    regex: Option<String>,
-    allowed_actions: Vec<AllowedAction>,
 }
 
 #[tokio::main]
@@ -237,7 +221,15 @@ async fn handle_agent_client(stream: UnixStream, state: Arc<DaemonState>) -> Res
             }
         };
 
-        handle_capability_request(&state, &expected, &identity, request).await?;
+        handle_capability_request(
+            &state,
+            &expected,
+            &identity,
+            request,
+            &mut lines,
+            frame,
+        )
+        .await?;
     }
 
     audit(
@@ -250,13 +242,34 @@ async fn handle_agent_client(stream: UnixStream, state: Arc<DaemonState>) -> Res
     Ok(())
 }
 
-async fn handle_capability_request(
+async fn handle_capability_request<R: tokio::io::AsyncBufRead + Unpin>(
     state: &Arc<DaemonState>,
     identity_record: &IdentityRecord,
     connection_identity: &ConnectionIdentity,
     request: CapabilityRequest,
+    _agent_stream: &mut tokio::io::Lines<R>,
+    raw_frame: &str,
 ) -> Result<()> {
-    match classify_request(&request) {
+    let upstream_socket = std::env::var("SECURITY_ISLAND_UPSTREAM_CMUX_SOCKET")
+        .unwrap_or_else(|_| "/tmp/cmux.sock.real".to_string());
+    
+    let upstream_stream = match UnixStream::connect(&upstream_socket).await {
+        Ok(s) => Some(s),
+        Err(error) => {
+            eprintln!("⚠️ Failed to connect to upstream cmux {upstream_socket}: {error}. Running in disconnected mode.");
+            None
+        }
+    };
+    
+    let (_upstream_reader, mut upstream_writer) = match upstream_stream {
+        Some(s) => {
+            let (r, w) = s.into_split();
+            (Some(BufReader::new(r)), Some(w))
+        }
+        None => (None, None),
+    };
+
+    match state.scanners.classify(&request) {
         PolicyDecision::Allow { reason } => {
             audit(
                 state,
@@ -265,6 +278,9 @@ async fn handle_capability_request(
                 None,
                 Some(&identity_record.agent_id),
             );
+            if let Some(w) = upstream_writer.as_mut() {
+                forward_to_upstream(w, raw_frame).await?;
+            }
         }
         PolicyDecision::Watch(template) => {
             let incident = build_incident(
@@ -288,6 +304,10 @@ async fn handle_capability_request(
                 Some(&identity_record.agent_id),
             );
             broadcast_control_message(state, ControlMessage::Incident(Box::new(incident))).await;
+
+            if let Some(w) = upstream_writer.as_mut() {
+                forward_to_upstream(w, raw_frame).await?;
+            }
         }
         PolicyDecision::Block(template) => {
             let incident = build_incident(
@@ -298,6 +318,7 @@ async fn handle_capability_request(
                 template,
             )?;
 
+            let incident_id = incident.incident_id.clone();
             state
                 .pending_incidents
                 .lock()
@@ -310,6 +331,17 @@ async fn handle_capability_request(
                 Some(&incident.incident_id),
                 Some(&identity_record.agent_id),
             );
+
+            let pgid = incident.pgid;
+            let _ = signal_process_group(pgid, libc::SIGSTOP);
+            audit(
+                state,
+                "process_paused",
+                "Sent SIGSTOP to process group pending decision",
+                Some(&incident_id),
+                Some(&identity_record.agent_id),
+            );
+
             broadcast_control_message(state, ControlMessage::Incident(Box::new(incident))).await;
         }
     }
@@ -317,83 +349,75 @@ async fn handle_capability_request(
     Ok(())
 }
 
-fn classify_request(request: &CapabilityRequest) -> PolicyDecision {
-    let payload = request.payload.to_lowercase();
-    let capability = request.capability.as_str();
-
-    if capability == "browser.eval" && contains_any(&payload, &["document.cookie", "localstorage", "sessionstorage", "bearer ", "api_key", "token"]) {
-        return PolicyDecision::Block(IncidentTemplate {
-            state: IncidentState::PendingDecision,
-            severity: Severity::Critical,
-            reason: "browser script targets browser-held secrets",
-            rule_id: "SI-BROWSER-01",
-            risk: 98,
-            evidence: vec![format!("browser.eval payload matched secret access pattern: {}", request.payload)],
-            regex: Some("document.cookie|localStorage|sessionStorage|bearer|api_key|token".to_string()),
-            allowed_actions: vec![
-                AllowedAction::AllowOnce,
-                AllowedAction::ContinueWatched,
-                AllowedAction::Kill,
-                AllowedAction::LlmJudge,
-            ],
-        });
-    }
-
-    if matches!(capability, "terminal.exec" | "terminal.send_text")
-        && contains_any(&payload, &["curl ", "wget ", "chmod +x", "sudo ", "rm -rf", "launchctl", "osascript", "ssh "])
-    {
-        return PolicyDecision::Block(IncidentTemplate {
-            state: IncidentState::PendingDecision,
-            severity: Severity::High,
-            reason: "shell request matched high-risk execution pattern",
-            rule_id: "SI-TERM-01",
-            risk: 90,
-            evidence: vec![format!("terminal payload matched high-risk shell pattern: {}", request.payload)],
-            regex: Some("curl|wget|chmod \\+x|sudo|rm -rf|launchctl|osascript|ssh".to_string()),
-            allowed_actions: vec![
-                AllowedAction::AllowOnce,
-                AllowedAction::ContinueWatched,
-                AllowedAction::Kill,
-                AllowedAction::LlmJudge,
-            ],
-        });
-    }
-
-    if matches!(capability, "terminal.read_file" | "terminal.exec" | "terminal.send_text")
-        && contains_any(&payload, &[".env", ".ssh", "id_rsa", "id_ed25519", "/etc/passwd", "aws_secret_access_key", "ghp_"])
-    {
-        return PolicyDecision::Watch(IncidentTemplate {
-            state: IncidentState::Watch,
-            severity: Severity::Medium,
-            reason: "request touched a sensitive file or token pattern",
-            rule_id: "SI-DATA-01",
-            risk: 65,
-            evidence: vec![format!("payload matched sensitive path or token indicator: {}", request.payload)],
-            regex: Some("\\.env|\\.ssh|id_rsa|id_ed25519|/etc/passwd|aws_secret_access_key|ghp_".to_string()),
-            allowed_actions: vec![AllowedAction::ContinueWatched, AllowedAction::Kill],
-        });
-    }
-
-    if capability == "browser.eval" {
-        return PolicyDecision::Watch(IncidentTemplate {
-            state: IncidentState::Watch,
-            severity: Severity::Medium,
-            reason: "browser script execution is allowed only under watch in MVP policy",
-            rule_id: "SI-BROWSER-00",
-            risk: 55,
-            evidence: vec![format!("browser.eval executed without secret-match payload: {}", request.payload)],
-            regex: None,
-            allowed_actions: vec![AllowedAction::ContinueWatched, AllowedAction::Kill],
-        });
-    }
-
-    PolicyDecision::Allow {
-        reason: "request stayed on the explicit low-risk MVP path",
-    }
+async fn forward_to_upstream(writer: &mut tokio::net::unix::OwnedWriteHalf, raw_frame: &str) -> Result<()> {
+    writer.write_all(raw_frame.as_bytes()).await?;
+    writer.write_all(b"\n").await?;
+    writer.flush().await?;
+    println!("⏩ Forwarded {} bytes to upstream cmux", raw_frame.len());
+    Ok(())
 }
 
-fn contains_any(haystack: &str, needles: &[&str]) -> bool {
-    needles.iter().any(|needle| haystack.contains(needle))
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::scanners::Pipeline;
+
+    fn dummy_request(capability: &str, payload: &str) -> CapabilityRequest {
+        CapabilityRequest {
+            capability: capability.to_string(),
+            payload: payload.to_string(),
+            cwd: "/tmp".to_string(),
+        }
+    }
+
+    #[test]
+    fn policy_blocks_browser_secrets() {
+        let req = dummy_request("browser.eval", "console.log(document.cookie);");
+        let pipeline = Pipeline::new();
+        match pipeline.classify(&req) {
+            PolicyDecision::Block(t) => {
+                assert_eq!(t.rule_id, "SI-BROWSER-01");
+                assert_eq!(t.severity, Severity::Critical);
+            }
+            _ => panic!("Expected block"),
+        }
+    }
+
+    #[test]
+    fn policy_blocks_destructive_shell() {
+        let req = dummy_request("terminal.exec", "rm -rf /");
+        let pipeline = Pipeline::new();
+        match pipeline.classify(&req) {
+            PolicyDecision::Block(t) => {
+                assert_eq!(t.rule_id, "SI-TERM-01");
+                assert_eq!(t.severity, Severity::High);
+            }
+            _ => panic!("Expected block"),
+        }
+    }
+
+    #[test]
+    fn policy_watches_sensitive_files() {
+        let req = dummy_request("terminal.read_file", "cat ~/.ssh/id_rsa");
+        let pipeline = Pipeline::new();
+        match pipeline.classify(&req) {
+            PolicyDecision::Watch(t) => {
+                assert_eq!(t.rule_id, "SI-DATA-01");
+                assert_eq!(t.severity, Severity::Medium);
+            }
+            _ => panic!("Expected watch"),
+        }
+    }
+
+    #[test]
+    fn policy_allows_safe_commands() {
+        let req = dummy_request("terminal.exec", "ls -la");
+        let pipeline = Pipeline::new();
+        match pipeline.classify(&req) {
+            PolicyDecision::Allow { .. } => {}
+            _ => panic!("Expected allow"),
+        }
+    }
 }
 
 fn build_incident(
