@@ -1,8 +1,9 @@
 mod scanners;
 
 use anyhow::{bail, Context, Result};
-use scanners::{Pipeline, PolicyDecision, IncidentTemplate};
-use serde::Serialize;
+use scanners::Pipeline;
+use plugin_api::{PolicyDecision, IncidentTemplate};
+use serde::{Deserialize, Serialize};
 use shared::control::{AllowedAction, ControlMessage, DecisionAck, DecisionCommand};
 
 use shared::{
@@ -16,7 +17,7 @@ use std::sync::{
     atomic::{AtomicU64, Ordering},
     Arc,
 };
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::{mpsc, Mutex};
 
@@ -31,6 +32,7 @@ pub struct ConnectionIdentity {
     pub peer_uid: u32,
     pub peer_gid: u32,
     pub session_nonce_validated: bool,
+    pub public_broker_mode: bool,
 }
 
 struct DaemonState {
@@ -41,7 +43,7 @@ struct DaemonState {
     pending_incidents: Mutex<HashMap<String, Incident>>,
     ui_clients: Mutex<Vec<mpsc::UnboundedSender<ControlMessage>>>,
     incident_counter: AtomicU64,
-    scanners: Pipeline,
+    active_pipeline: arc_swap::ArcSwap<Pipeline>,
 }
 
 impl DaemonState {
@@ -54,14 +56,26 @@ impl DaemonState {
             pending_incidents: Mutex::new(HashMap::new()),
             ui_clients: Mutex::new(Vec::new()),
             incident_counter: AtomicU64::new(1),
-            scanners: Pipeline::new(),
+            active_pipeline: arc_swap::ArcSwap::from_pointee(Pipeline::new()),
         }
+    }
+
+    #[allow(dead_code)]
+    pub fn reload_pipeline(&self, new_pipeline: Pipeline) {
+        self.active_pipeline.store(Arc::new(new_pipeline));
     }
 
     fn next_incident_id(&self) -> String {
         let next = self.incident_counter.fetch_add(1, Ordering::Relaxed);
         format!("SI-LIVE-{next:04}")
     }
+}
+
+#[derive(Debug, Deserialize)]
+struct CmuxV2Frame {
+    method: String,
+    #[serde(default)]
+    params: serde_json::Value,
 }
 
 #[derive(Serialize)]
@@ -100,8 +114,21 @@ async fn main() -> Result<()> {
     std::fs::set_permissions(&registration_socket, std::fs::Permissions::from_mode(0o700))
         .with_context(|| format!("Failed to secure registration socket: {}", registration_socket))?;
 
+    let public_cmux_socket = std::env::var("SECURITY_ISLAND_PUBLIC_CMUX_SOCKET")
+        .unwrap_or_else(|_| "/tmp/cmux.sock".to_string());
+    let _ = std::fs::remove_file(&public_cmux_socket);
+    let public_listener = UnixListener::bind(&public_cmux_socket)
+        .with_context(|| format!("Failed to bind public cmux socket: {public_cmux_socket}"))?;
+    std::fs::set_permissions(&public_cmux_socket, std::fs::Permissions::from_mode(0o700))
+        .with_context(|| format!("Failed to secure public cmux socket: {}", public_cmux_socket))?;
+
+    let upstream_cmux_socket = std::env::var("SECURITY_ISLAND_UPSTREAM_CMUX_SOCKET")
+        .unwrap_or_else(|_| "/tmp/cmux.sock.real".to_string());
+
     println!("🖥  Listening for UI decisions on {}", control_socket);
     println!("🧾 Listening for launcher registrations on {}", registration_socket);
+    println!("🌉 Public cmux broker listening on {}", public_cmux_socket);
+    println!("🔌 Upstream cmux target is {}", upstream_cmux_socket);
     if demo_mode {
         println!("🧪 Daemon demo mode enabled via SECURITY_ISLAND_DAEMON_DEMO=1");
     }
@@ -121,6 +148,15 @@ async fn main() -> Result<()> {
                 tokio::spawn(async move {
                     if let Err(e) = handle_registration_client(stream, state).await {
                         eprintln!("❌ Launcher registration rejected: {}", e);
+                    }
+                });
+            }
+            Ok((stream, _)) = public_listener.accept() => {
+                let state = Arc::clone(&state);
+                let socket_path = public_cmux_socket.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = handle_public_cmux_client(stream, state, socket_path).await {
+                        eprintln!("❌ Public cmux connection rejected: {}", e);
                     }
                 });
             }
@@ -148,6 +184,7 @@ async fn handle_agent_client(stream: UnixStream, state: Arc<DaemonState>) -> Res
         peer_uid: creds.uid(),
         peer_gid: creds.gid(),
         session_nonce_validated: false,
+        public_broker_mode: false,
     };
 
     println!(
@@ -284,7 +321,8 @@ async fn handle_capability_request<R: tokio::io::AsyncBufRead + Unpin>(
     raw_frame: &str,
     upstream_writer: &mut Option<tokio::net::unix::OwnedWriteHalf>,
 ) -> Result<()> {
-    match state.scanners.classify(&request) {
+    let pipeline = state.active_pipeline.load();
+    match pipeline.classify(&request) {
         PolicyDecision::Allow { reason } => {
             audit(
                 state,
@@ -372,6 +410,135 @@ async fn forward_to_upstream(writer: &mut tokio::net::unix::OwnedWriteHalf, raw_
     Ok(())
 }
 
+fn normalize_cmux_v2_frame(frame: &CmuxV2Frame) -> CapabilityRequest {
+    let capability = match frame.method.as_str() {
+        "surface.send_text" => "terminal.send_text",
+        "surface.send_key" => "terminal.send_key",
+        "surface.read_text" => "terminal.read_text",
+        other => other,
+    }
+    .to_string();
+
+    let payload = match frame.method.as_str() {
+        "surface.send_text" => frame.params.get("text").and_then(|v| v.as_str()).unwrap_or_default().to_string(),
+        "surface.send_key" => frame.params.get("key").and_then(|v| v.as_str()).unwrap_or_default().to_string(),
+        "browser.navigate" => frame.params.get("url").and_then(|v| v.as_str()).unwrap_or_default().to_string(),
+        _ => serde_json::to_string(&frame.params).unwrap_or_default(),
+    };
+    let cwd = frame
+        .params
+        .get("cwd")
+        .and_then(|v| v.as_str())
+        .or_else(|| frame.params.get("workspace_id").and_then(|v| v.as_str()))
+        .or_else(|| frame.params.get("surface_id").and_then(|v| v.as_str()))
+        .unwrap_or("cmux")
+        .to_string();
+
+    CapabilityRequest { capability, payload, cwd }
+}
+
+async fn handle_public_cmux_client(stream: UnixStream, state: Arc<DaemonState>, socket_path: String) -> Result<()> {
+    let creds = stream.peer_cred()?;
+
+    if creds.uid() != state.allowed_uid {
+        bail!(
+            "Unauthorized public broker UID: {}. Only UID {} is allowed.",
+            creds.uid(),
+            state.allowed_uid
+        );
+    }
+
+    let upstream_socket = std::env::var("SECURITY_ISLAND_UPSTREAM_CMUX_SOCKET")
+        .unwrap_or_else(|_| "/tmp/cmux.sock.real".to_string());
+
+    let mut upstream_stream = match UnixStream::connect(&upstream_socket).await {
+        Ok(s) => Some(s),
+        Err(error) => {
+            eprintln!("⚠️ Failed to connect to upstream cmux {upstream_socket}: {error}. Running in disconnected mode.");
+            None
+        }
+    };
+
+    let identity_record = IdentityRecord {
+        agent_id: format!("public-broker-pid-{}", creds.pid().unwrap_or(0)),
+        session_nonce: "public-broker".to_string(),
+        uid: creds.uid(),
+        socket_dir: socket_path.clone(),
+        socket_path: socket_path.clone(),
+        pid: creds.pid().map(|pid| pid as u32),
+        pgid: creds.pid().map(|pid| pid as u32),
+    };
+
+    let connection_identity = ConnectionIdentity {
+        peer_pid: creds.pid().unwrap_or(0),
+        peer_uid: creds.uid(),
+        peer_gid: creds.gid(),
+        session_nonce_validated: false,
+        public_broker_mode: true,
+    };
+
+    println!(
+        "🌉 Public cmux client connected | UID: {} | PID: {}",
+        connection_identity.peer_uid, connection_identity.peer_pid
+    );
+
+    let (stream_reader, mut stream_writer) = stream.into_split();
+    let mut lines = BufReader::new(stream_reader).lines();
+    while let Some(line) = lines.next_line().await? {
+        let frame = line.trim();
+        if frame.is_empty() {
+            continue;
+        }
+
+        let request = match serde_json::from_str::<CmuxV2Frame>(frame) {
+            Ok(cmux_frame) => normalize_cmux_v2_frame(&cmux_frame),
+            Err(error) => {
+                eprintln!("⚠️ Failed to decode public capability frame: {}", error);
+                continue;
+            }
+        };
+
+        if let Some(upstream) = upstream_stream.as_mut() {
+            upstream.write_all(frame.as_bytes()).await?;
+            upstream.write_all(b"\n").await?;
+            upstream.flush().await?;
+        }
+
+        handle_capability_request(
+            &state,
+            &identity_record,
+            &connection_identity,
+            request,
+            &mut lines,
+            frame,
+            &mut None,
+        )
+        .await?;
+
+        if let Some(upstream) = upstream_stream.as_mut() {
+            let mut response = Vec::new();
+            loop {
+                let mut byte = [0u8; 1];
+                let bytes_read = upstream.read(&mut byte).await?;
+                if bytes_read == 0 {
+                    break;
+                }
+                response.push(byte[0]);
+                if byte[0] == b'\n' {
+                    break;
+                }
+            }
+
+            if !response.is_empty() {
+                stream_writer.write_all(&response).await?;
+                stream_writer.flush().await?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -448,6 +615,12 @@ fn build_incident(
         .map(|value| value as i32)
         .unwrap_or(connection_identity.peer_pid);
 
+    let agent_prefix = if connection_identity.public_broker_mode {
+        "public"
+    } else {
+        "agent"
+    };
+
     Ok(Incident {
         incident_id: state.next_incident_id(),
         actor: ActorContext {
@@ -456,7 +629,7 @@ fn build_incident(
             agent_id: identity_record.agent_id.clone(),
         },
         cmux: CmuxContext {
-            workspace_id: format!("agent:{}", identity_record.agent_id),
+            workspace_id: format!("{agent_prefix}:{}", identity_record.agent_id),
             surface_id: format!("surface:{}", identity_record.agent_id),
             socket_path: identity_record.socket_path.clone(),
         },

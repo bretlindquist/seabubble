@@ -1,6 +1,6 @@
 use std::process::Command;
 
-use crate::scanners::{extract_artifact_refs, IncidentTemplate, Scanner, ScannerStage};
+use plugin_api::{extract_artifact_refs, IncidentTemplate, Scanner, ScannerStage};
 use shared::{control::AllowedAction, CapabilityRequest, IncidentState, Severity};
 
 pub struct MagikaScanner;

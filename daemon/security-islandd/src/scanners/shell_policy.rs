@@ -1,4 +1,4 @@
-use crate::scanners::{IncidentTemplate, Scanner, ScannerStage};
+use plugin_api::{IncidentTemplate, Scanner, ScannerStage};
 use shared::{control::AllowedAction, CapabilityRequest, IncidentState, Severity};
 
 #[derive(Debug, PartialEq, Clone)]

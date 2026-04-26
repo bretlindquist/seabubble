@@ -1,4 +1,4 @@
-use crate::scanners::{IncidentTemplate, Scanner, ScannerStage};
+use plugin_api::{IncidentTemplate, Scanner, ScannerStage};
 use regex::Regex;
 use shared::{control::AllowedAction, CapabilityRequest, IncidentState, Severity};
 

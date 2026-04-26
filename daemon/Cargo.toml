@@ -2,8 +2,9 @@
 members = [
     "security-islandd",
     "agent-launcher",
-    "shared"
-]
+    "shared",
+    "fake-control-demo"
+, "plugin-api"]
 resolver = "2"
 
 [workspace.dependencies]
