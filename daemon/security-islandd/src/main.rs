@@ -20,6 +20,11 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::{mpsc, Mutex};
 
+// PRODUCTION HARDENING NOTE:
+// The real upstream cmux socket (`SECURITY_ISLAND_UPSTREAM_CMUX_SOCKET` or `/tmp/cmux.sock.real`)
+// MUST be placed in a secure directory with 0700 permissions owned exclusively by the daemon's user/group.
+// Otherwise, an attacker could bypass the Security Island daemon by writing directly to the upstream socket.
+
 #[derive(Debug)]
 pub struct ConnectionIdentity {
     pub peer_pid: i32,
@@ -86,10 +91,14 @@ async fn main() -> Result<()> {
     let control_socket = format!("{runtime_dir}/control.sock");
     let _ = std::fs::remove_file(&control_socket);
     let control_listener = UnixListener::bind(&control_socket)?;
+    std::fs::set_permissions(&control_socket, std::fs::Permissions::from_mode(0o700))
+        .with_context(|| format!("Failed to secure control socket: {}", control_socket))?;
 
     let registration_socket = format!("{runtime_dir}/registration.sock");
     let _ = std::fs::remove_file(&registration_socket);
     let registration_listener = UnixListener::bind(&registration_socket)?;
+    std::fs::set_permissions(&registration_socket, std::fs::Permissions::from_mode(0o700))
+        .with_context(|| format!("Failed to secure registration socket: {}", registration_socket))?;
 
     println!("🖥  Listening for UI decisions on {}", control_socket);
     println!("🧾 Listening for launcher registrations on {}", registration_socket);
@@ -120,6 +129,10 @@ async fn main() -> Result<()> {
 }
 
 async fn handle_agent_client(stream: UnixStream, state: Arc<DaemonState>) -> Result<()> {
+    // TODO (Post-Demo Hardening): Implement Darwin audit_token_t FFI here.
+    // We need to replace `peer_cred()` with `getsockopt` using `SOL_LOCAL` / `LOCAL_PEERTOKEN` 
+    // to retrieve the audit_token_t. This will provide un-spoofable process lineage (pid, uid, pgid)
+    // and protect against PID reuse or credential spoofing attacks.
     let creds = stream.peer_cred()?;
 
     if creds.uid() != state.allowed_uid {
@@ -200,6 +213,25 @@ async fn handle_agent_client(stream: UnixStream, state: Arc<DaemonState>) -> Res
         Some(&expected.agent_id),
     );
 
+    let upstream_socket = std::env::var("SECURITY_ISLAND_UPSTREAM_CMUX_SOCKET")
+        .unwrap_or_else(|_| "/tmp/cmux.sock.real".to_string());
+    
+    let upstream_stream = match UnixStream::connect(&upstream_socket).await {
+        Ok(s) => Some(s),
+        Err(error) => {
+            eprintln!("⚠️ Failed to connect to upstream cmux {upstream_socket}: {error}. Running in disconnected mode.");
+            None
+        }
+    };
+    
+    let mut upstream_writer = match upstream_stream {
+        Some(s) => {
+            let (_, w) = s.into_split();
+            Some(w)
+        }
+        None => None,
+    };
+
     while let Some(line) = lines.next_line().await? {
         let frame = line.trim();
         if frame.is_empty() {
@@ -228,6 +260,7 @@ async fn handle_agent_client(stream: UnixStream, state: Arc<DaemonState>) -> Res
             request,
             &mut lines,
             frame,
+            &mut upstream_writer,
         )
         .await?;
     }
@@ -249,26 +282,8 @@ async fn handle_capability_request<R: tokio::io::AsyncBufRead + Unpin>(
     request: CapabilityRequest,
     _agent_stream: &mut tokio::io::Lines<R>,
     raw_frame: &str,
+    upstream_writer: &mut Option<tokio::net::unix::OwnedWriteHalf>,
 ) -> Result<()> {
-    let upstream_socket = std::env::var("SECURITY_ISLAND_UPSTREAM_CMUX_SOCKET")
-        .unwrap_or_else(|_| "/tmp/cmux.sock.real".to_string());
-    
-    let upstream_stream = match UnixStream::connect(&upstream_socket).await {
-        Ok(s) => Some(s),
-        Err(error) => {
-            eprintln!("⚠️ Failed to connect to upstream cmux {upstream_socket}: {error}. Running in disconnected mode.");
-            None
-        }
-    };
-    
-    let (_upstream_reader, mut upstream_writer) = match upstream_stream {
-        Some(s) => {
-            let (r, w) = s.into_split();
-            (Some(BufReader::new(r)), Some(w))
-        }
-        None => (None, None),
-    };
-
     match state.scanners.classify(&request) {
         PolicyDecision::Allow { reason } => {
             audit(
@@ -456,7 +471,7 @@ fn build_incident(
         evidence: template.evidence,
         filter_results: FilterResults {
             regex: template.regex,
-            bash_ast: None,
+            bash_ast: template.bash_ast,
             magika: None,
             llm: None,
         },
@@ -565,6 +580,8 @@ async fn bind_agent_socket(socket_path: String, state: Arc<DaemonState>) -> Resu
     let _ = std::fs::remove_file(&socket_path);
     let listener = UnixListener::bind(&socket_path)
         .with_context(|| format!("Failed to bind agent socket: {socket_path}"))?;
+    std::fs::set_permissions(&socket_path, std::fs::Permissions::from_mode(0o700))
+        .with_context(|| format!("Failed to secure agent socket: {}", socket_path))?;
     println!("🎧 Listening for registered agent on {socket_path}");
 
     loop {
