@@ -127,6 +127,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/bretlindquist/.openclaw/workspace/Sources/SecurityIslandCore/MagikaScanner.swift"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/bretlindquist/.openclaw/workspace/Sources/SecurityIslandCore/Models.swift"
         },
         {
@@ -136,6 +140,10 @@
         {
           "kind" : "file",
           "name" : "/Users/bretlindquist/.openclaw/workspace/Sources/SecurityIslandCore/SecurityPlugin.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bretlindquist/.openclaw/workspace/Sources/SecurityIslandCore/TelegramAdapter.swift"
         },
         {
           "kind" : "file",
@@ -152,9 +160,11 @@
       "objects" : [
         "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/DecisionBus.swift.o",
         "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/DemoSeeder.swift.o",
+        "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/MagikaScanner.swift.o",
         "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/Models.swift.o",
         "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/ProcessController.swift.o",
-        "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/SecurityPlugin.swift.o"
+        "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/SecurityPlugin.swift.o",
+        "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/TelegramAdapter.swift.o"
       ],
       "otherArguments" : [
         "-target",
@@ -212,6 +222,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/MagikaScanner.swift.o"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/Models.swift.o"
         },
         {
@@ -224,6 +238,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/TelegramAdapter.swift.o"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/Modules/SecurityIslandCore.swiftmodule"
         }
       ],
@@ -231,9 +249,11 @@
       "sources" : [
         "/Users/bretlindquist/.openclaw/workspace/Sources/SecurityIslandCore/DecisionBus.swift",
         "/Users/bretlindquist/.openclaw/workspace/Sources/SecurityIslandCore/DemoSeeder.swift",
+        "/Users/bretlindquist/.openclaw/workspace/Sources/SecurityIslandCore/MagikaScanner.swift",
         "/Users/bretlindquist/.openclaw/workspace/Sources/SecurityIslandCore/Models.swift",
         "/Users/bretlindquist/.openclaw/workspace/Sources/SecurityIslandCore/ProcessController.swift",
-        "/Users/bretlindquist/.openclaw/workspace/Sources/SecurityIslandCore/SecurityPlugin.swift"
+        "/Users/bretlindquist/.openclaw/workspace/Sources/SecurityIslandCore/SecurityPlugin.swift",
+        "/Users/bretlindquist/.openclaw/workspace/Sources/SecurityIslandCore/TelegramAdapter.swift"
       ],
       "tempsPath" : "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build",
       "wholeModuleOptimization" : false
@@ -430,9 +450,11 @@
       "-c",
       "/Users/bretlindquist/.openclaw/workspace/Sources/SecurityIslandCore/DecisionBus.swift",
       "/Users/bretlindquist/.openclaw/workspace/Sources/SecurityIslandCore/DemoSeeder.swift",
+      "/Users/bretlindquist/.openclaw/workspace/Sources/SecurityIslandCore/MagikaScanner.swift",
       "/Users/bretlindquist/.openclaw/workspace/Sources/SecurityIslandCore/Models.swift",
       "/Users/bretlindquist/.openclaw/workspace/Sources/SecurityIslandCore/ProcessController.swift",
       "/Users/bretlindquist/.openclaw/workspace/Sources/SecurityIslandCore/SecurityPlugin.swift",
+      "/Users/bretlindquist/.openclaw/workspace/Sources/SecurityIslandCore/TelegramAdapter.swift",
       "-I",
       "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/Modules",
       "-target",
@@ -608,6 +630,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/MagikaScanner.swift.o"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/Models.swift.o"
         },
         {
@@ -617,6 +643,10 @@
         {
           "kind" : "file",
           "name" : "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/SecurityPlugin.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/TelegramAdapter.swift.o"
         },
         {
           "kind" : "file",
@@ -654,6 +684,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/bretlindquist/.openclaw/workspace/Sources/SecurityIslandCore/MagikaScanner.swift"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/bretlindquist/.openclaw/workspace/Sources/SecurityIslandCore/Models.swift"
         },
         {
@@ -663,6 +697,10 @@
         {
           "kind" : "file",
           "name" : "/Users/bretlindquist/.openclaw/workspace/Sources/SecurityIslandCore/SecurityPlugin.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bretlindquist/.openclaw/workspace/Sources/SecurityIslandCore/TelegramAdapter.swift"
         }
       ],
       "outputFilePath" : "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/sources"

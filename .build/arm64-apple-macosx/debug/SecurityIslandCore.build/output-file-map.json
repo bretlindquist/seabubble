@@ -14,6 +14,12 @@
     "swiftmodule": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/DemoSeeder~partial.swiftmodule",
     "swift-dependencies": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/DemoSeeder.swiftdeps"
   },
+  "/Users/bretlindquist/.openclaw/workspace/Sources/SecurityIslandCore/MagikaScanner.swift": {
+    "dependencies": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/MagikaScanner.d",
+    "object": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/MagikaScanner.swift.o",
+    "swiftmodule": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/MagikaScanner~partial.swiftmodule",
+    "swift-dependencies": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/MagikaScanner.swiftdeps"
+  },
   "/Users/bretlindquist/.openclaw/workspace/Sources/SecurityIslandCore/Models.swift": {
     "dependencies": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/Models.d",
     "object": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/Models.swift.o",
@@ -31,5 +37,11 @@
     "object": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/SecurityPlugin.swift.o",
     "swiftmodule": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/SecurityPlugin~partial.swiftmodule",
     "swift-dependencies": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/SecurityPlugin.swiftdeps"
+  },
+  "/Users/bretlindquist/.openclaw/workspace/Sources/SecurityIslandCore/TelegramAdapter.swift": {
+    "dependencies": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/TelegramAdapter.d",
+    "object": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/TelegramAdapter.swift.o",
+    "swiftmodule": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/TelegramAdapter~partial.swiftmodule",
+    "swift-dependencies": "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/TelegramAdapter.swiftdeps"
   }
 }
