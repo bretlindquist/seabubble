@@ -30,3 +30,23 @@ pub struct Incident {
     pub cmux: CmuxContext,
     pub request: CapabilityRequest,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SecurityIdentifyParams {
+    pub agent_id: String,
+    pub session_nonce: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SecurityIdentifyHandshake {
+    pub method: String,
+    pub params: SecurityIdentifyParams,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct IdentityRecord {
+    pub agent_id: String,
+    pub session_nonce: String,
+    pub uid: u32,
+    pub socket_dir: String,
+}

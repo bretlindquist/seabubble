@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use shared::IdentityRecord;
 use std::env;
 use std::os::unix::fs::PermissionsExt;
 use std::process::Command;
@@ -34,8 +35,21 @@ fn main() -> Result<()> {
     let socket_path = format!("{}/cmux.sock", socket_dir);
 
     println!("🔒 Established secure boundary at: {}", socket_dir);
+
+    // 4. Persist short-lived identity record for daemon-side nonce validation
+    let identity_record = IdentityRecord {
+        agent_id: agent_id.to_string(),
+        session_nonce: session_nonce.to_string(),
+        uid,
+        socket_dir: socket_dir.clone(),
+    };
+
+    let identity_path = format!("{}/identity.json", socket_dir);
+    let identity_json = serde_json::to_vec_pretty(&identity_record)?;
+    std::fs::write(&identity_path, identity_json)
+        .with_context(|| format!("Failed to write identity file: {}", identity_path))?;
     
-    // 4. Secure Subprocess Spawning (Environment Cleansing)
+    // 5. Secure Subprocess Spawning (Environment Cleansing)
     let mut child = Command::new(target_executable)
         .args(target_args)
         .env_clear() // Drop inherited secrets (like AWS keys or global PATH)
@@ -51,11 +65,11 @@ fn main() -> Result<()> {
 
     println!("🛡️  Agent {} spawned successfully with PID: {}", agent_id, child.id());
 
-    // 5. Wait for agent to exit naturally
+    // 6. Wait for agent to exit naturally
     let status = child.wait()?;
     println!("🛑 Agent {} exited with status: {}", agent_id, status);
 
-    // 6. Cleanup secure socket directory
+    // 7. Cleanup secure socket directory
     let _ = std::fs::remove_dir_all(&socket_dir);
     
     Ok(())
