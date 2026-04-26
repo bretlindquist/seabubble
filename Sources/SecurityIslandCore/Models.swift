@@ -39,6 +39,13 @@ public struct FilterResults: Codable {
         self.magika = magika
         self.llm = llm
     }
+    
+    enum CodingKeys: String, CodingKey {
+        case regex
+        case bashAst = "bash_ast"
+        case magika
+        case llm
+    }
 }
 
 public struct ActorContext: Codable {
@@ -51,6 +58,12 @@ public struct ActorContext: Codable {
         self.process = process
         self.agentId = agentId
     }
+    
+    enum CodingKeys: String, CodingKey {
+        case uid
+        case process
+        case agentId = "agent_id"
+    }
 }
 
 public struct CmuxContext: Codable {
@@ -62,6 +75,12 @@ public struct CmuxContext: Codable {
         self.workspaceId = workspaceId
         self.surfaceId = surfaceId
         self.socketPath = socketPath
+    }
+    
+    enum CodingKeys: String, CodingKey {
+        case workspaceId = "workspace_id"
+        case surfaceId = "surface_id"
+        case socketPath = "socket_path"
     }
 }
 
