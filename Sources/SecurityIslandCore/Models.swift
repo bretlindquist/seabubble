@@ -41,10 +41,48 @@ public struct FilterResults: Codable {
     }
 }
 
+public struct ActorContext: Codable {
+    public let uid: Int
+    public let process: String
+    public let agentId: String
+    
+    public init(uid: Int, process: String, agentId: String) {
+        self.uid = uid
+        self.process = process
+        self.agentId = agentId
+    }
+}
+
+public struct CmuxContext: Codable {
+    public let workspaceId: String
+    public let surfaceId: String
+    public let socketPath: String
+    
+    public init(workspaceId: String, surfaceId: String, socketPath: String) {
+        self.workspaceId = workspaceId
+        self.surfaceId = surfaceId
+        self.socketPath = socketPath
+    }
+}
+
+public struct CapabilityRequest: Codable {
+    public let capability: String
+    public let payload: String
+    public let cwd: String
+    
+    public init(capability: String, payload: String, cwd: String) {
+        self.capability = capability
+        self.payload = payload
+        self.cwd = cwd
+    }
+}
+
 public struct Incident: Identifiable, Codable {
     public let id: String
-    public let agentId: String
-    public let paneId: String
+    public let actor: ActorContext
+    public let cmux: CmuxContext
+    public let request: CapabilityRequest
+    
     public let pid: pid_t
     public let pgid: pid_t
     public var state: IncidentState
@@ -52,8 +90,6 @@ public struct Incident: Identifiable, Codable {
     public let severity: Severity
     public let reason: String
     public let ruleId: String?
-    public let rawRedacted: String
-    public let normalized: String
     public var evidence: [String]
     public var filterResults: FilterResults
     public let createdAt: Date
