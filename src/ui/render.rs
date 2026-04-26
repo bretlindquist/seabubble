@@ -1,12 +1,11 @@
 use ratatui::{
-    backend::Backend,
-    layout::{Constraint, Direction, Layout},
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
     text::{Line, Span},
-    widgets::{Block, Paragraph},
+    widgets::{Block, Paragraph, Borders, Clear},
     Frame,
 };
-use crate::core::types::ChatMessage;
+use crate::core::types::{ChatMessage, AppState, AppMode};
 
 pub fn render_markdown(text: &str) -> Vec<Line> {
     let mut lines = Vec::new();
@@ -27,7 +26,27 @@ pub fn render_markdown(text: &str) -> Vec<Line> {
     lines
 }
 
-pub fn draw_ui<B: Backend>(frame: &mut Frame, messages: &[ChatMessage]) {
+fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
+    let popup_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Percentage((100 - percent_y) / 2),
+            Constraint::Percentage(percent_y),
+            Constraint::Percentage((100 - percent_y) / 2),
+        ])
+        .split(r);
+
+    Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage((100 - percent_x) / 2),
+            Constraint::Percentage(percent_x),
+            Constraint::Percentage((100 - percent_x) / 2),
+        ])
+        .split(popup_layout[1])[1]
+}
+
+pub fn draw_ui<B: ratatui::backend::Backend>(frame: &mut Frame, messages: &[ChatMessage], state: &AppState) {
     // 2. Modify `draw_ui` to split the `frame.size()` into 3 vertical chunks:
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -63,4 +82,24 @@ pub fn draw_ui<B: Backend>(frame: &mut Frame, messages: &[ChatMessage]) {
     
     let footer = Paragraph::new(input_text);
     frame.render_widget(footer, chunks[2]);
+
+    if let AppMode::PermissionPrompt(ref tool) = state.mode {
+        let area = centered_rect(60, 20, frame.size());
+        
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .title(" Permission Required ");
+            
+        let text = vec![
+            Line::from(Span::styled("[WARNING] Destructive Tool Call Requested", Style::default().fg(Color::Red))),
+            Line::from(format!("Command: {}", tool.name)),
+            Line::from(format!("Args: {}", tool.arguments)),
+            Line::from(Span::styled("[A]pprove | [R]eject | [M]odify", Style::default().fg(Color::Yellow))),
+        ];
+        
+        let paragraph = Paragraph::new(text).block(block);
+        
+        frame.render_widget(Clear, area);
+        frame.render_widget(paragraph, area);
+    }
 }

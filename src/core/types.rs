@@ -1,6 +1,7 @@
 pub enum AppMode {
     Normal,
     Status,
+    PermissionPrompt(ToolCall),
 }
 
 pub struct AppState {

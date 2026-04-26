@@ -7,10 +7,12 @@ public final class CmuxSocketBroker {
     private let incomingSocketURL = URL(fileURLWithPath: "/tmp/cmux.sock")
     private let destinationSocketURL = URL(fileURLWithPath: "/tmp/cmux.sock.real")
     
-    // In a real implementation, we would retain the decision bus to push incidents.
-    // private let bus: DecisionBus
+    // Hold a reference to the central bus to inject real incidents
+    private weak var bus: DecisionBus?
     
-    public init() {}
+    public init(bus: DecisionBus) {
+        self.bus = bus
+    }
     
     public func start() {
         // Clean up stale socket if it exists
@@ -58,14 +60,63 @@ public final class CmuxSocketBroker {
     }
     
     private func handle(connection: NWConnection) {
-        connection.stateUpdateHandler = { state in
-            if state == .ready {
-                print("🔄 Intercepted new cmux automation request.")
-                // In production: Read data, parse into `CapabilityRequest`, 
-                // run through DecisionBus, and only forward to `.real` if allowed.
+        connection.stateUpdateHandler = { [weak self] state in
+            switch state {
+            case .ready:
+                print("🔄 Intercepted new cmux automation request from socket.")
+                self?.receiveMessage(on: connection)
+            case .failed(let error):
+                print("❌ Connection failed: \(error)")
                 connection.cancel()
+            case .cancelled:
+                print("🛑 Connection cancelled.")
+            default:
+                break
             }
         }
         connection.start(queue: .global(qos: .userInitiated))
+    }
+    
+    /// Recursively reads from the NWConnection and attempts to decode incoming JSON.
+    private func receiveMessage(on connection: NWConnection) {
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self, weak connection] data, _, isComplete, error in
+            guard let self = self, let connection = connection else { return }
+            
+            if let data = data, !data.isEmpty {
+                self.process(data: data)
+            }
+            
+            if let error = error {
+                print("⚠️ Receive error: \(error)")
+                connection.cancel()
+                return
+            }
+            
+            if isComplete {
+                connection.cancel()
+            } else {
+                // Read next chunk
+                self.receiveMessage(on: connection)
+            }
+        }
+    }
+    
+    private func process(data: Data) {
+        // In a true cmux environment, this would be a JSON-RPC CapabilityRequest.
+        // For production resilience, if it fails to decode, we log and drop safely.
+        let decoder = JSONDecoder()
+        do {
+            let incident = try decoder.decode(Incident.self, from: data)
+            Task { @MainActor [weak self] in
+                guard let self = self, let bus = self.bus else { return }
+                await bus.appendIncident(incident)
+                print("✅ Successfully routed socket incident \(incident.id) to DecisionBus.")
+            }
+        } catch {
+            print("⚠️ Failed to decode incoming socket data into Incident: \(error.localizedDescription)")
+            if let str = String(data: data, encoding: .utf8) {
+                print("Raw payload received: \(str)")
+            }
+        }
     }
 }
