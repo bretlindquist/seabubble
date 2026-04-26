@@ -1,6 +1,7 @@
 pub mod control;
 
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -106,4 +107,10 @@ pub enum RegistrationMessage {
 pub struct RegistrationAck {
     pub accepted: bool,
     pub message: Option<String>,
+}
+
+pub fn hash_session_nonce(session_nonce: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(session_nonce.as_bytes());
+    hex::encode(hasher.finalize())
 }

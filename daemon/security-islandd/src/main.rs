@@ -1,17 +1,20 @@
 use anyhow::{bail, Context, Result};
-use bytes::BytesMut;
+use serde::Serialize;
 use shared::control::{AllowedAction, ControlMessage, DecisionAck, DecisionCommand};
 use shared::{
-    ActorContext, CapabilityRequest, CmuxContext, FilterResults, IdentityRecord, Incident,
-    IncidentState, SecurityIdentifyHandshake, Severity,
+    hash_session_nonce, ActorContext, CapabilityRequest, CmuxContext, FilterResults,
+    IdentityRecord, Incident, IncidentState, RegistrationAck, RegistrationMessage,
+    SecurityIdentifyHandshake, Severity,
 };
 use std::collections::HashMap;
-use serde::Serialize;
 use std::os::unix::fs::PermissionsExt;
-use std::sync::Arc;
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc,
+};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{UnixListener, UnixStream};
-use tokio::sync::Mutex;
+use tokio::sync::{mpsc, Mutex};
 
 #[derive(Debug)]
 pub struct ConnectionIdentity {
@@ -26,7 +29,10 @@ struct DaemonState {
     allowed_uid: u32,
     demo_mode: bool,
     audit_log_path: String,
+    registered_agents: Mutex<HashMap<String, IdentityRecord>>,
     pending_incidents: Mutex<HashMap<String, Incident>>,
+    ui_clients: Mutex<Vec<mpsc::UnboundedSender<ControlMessage>>>,
+    incident_counter: AtomicU64,
 }
 
 impl DaemonState {
@@ -35,8 +41,16 @@ impl DaemonState {
             allowed_uid,
             demo_mode,
             audit_log_path,
+            registered_agents: Mutex::new(HashMap::new()),
             pending_incidents: Mutex::new(HashMap::new()),
+            ui_clients: Mutex::new(Vec::new()),
+            incident_counter: AtomicU64::new(1),
         }
+    }
+
+    fn next_incident_id(&self) -> String {
+        let next = self.incident_counter.fetch_add(1, Ordering::Relaxed);
+        format!("SI-LIVE-{next:04}")
     }
 }
 
@@ -47,6 +61,27 @@ struct AuditEvent<'a> {
     uid: u32,
     incident_id: Option<&'a str>,
     agent_id: Option<&'a str>,
+}
+
+#[derive(Debug)]
+enum PolicyDecision {
+    Allow {
+        reason: &'static str,
+    },
+    Watch(IncidentTemplate),
+    Block(IncidentTemplate),
+}
+
+#[derive(Debug)]
+struct IncidentTemplate {
+    state: IncidentState,
+    severity: Severity,
+    reason: &'static str,
+    rule_id: &'static str,
+    risk: u8,
+    evidence: Vec<String>,
+    regex: Option<String>,
+    allowed_actions: Vec<AllowedAction>,
 }
 
 #[tokio::main]
@@ -64,32 +99,22 @@ async fn main() -> Result<()> {
     let state = Arc::new(DaemonState::new(allowed_uid, demo_mode, audit_log_path));
     audit(&state, "daemon_started", "Security Island daemon started", None, None);
 
-    // 1. Hot Path: Agent Capability Intercept
-    let cmux_socket = "/tmp/cmux.sock";
-    let _ = std::fs::remove_file(cmux_socket);
-    let agent_listener = UnixListener::bind(cmux_socket)?;
-
-    // 2. Control Path: SwiftUI Decision Bus
     let control_socket = format!("{runtime_dir}/control.sock");
     let _ = std::fs::remove_file(&control_socket);
     let control_listener = UnixListener::bind(&control_socket)?;
 
-    println!("🎧 Listening for cmux capabilities on {}", cmux_socket);
+    let registration_socket = format!("{runtime_dir}/registration.sock");
+    let _ = std::fs::remove_file(&registration_socket);
+    let registration_listener = UnixListener::bind(&registration_socket)?;
+
     println!("🖥  Listening for UI decisions on {}", control_socket);
+    println!("🧾 Listening for launcher registrations on {}", registration_socket);
     if demo_mode {
         println!("🧪 Daemon demo mode enabled via SECURITY_ISLAND_DAEMON_DEMO=1");
     }
 
     loop {
         tokio::select! {
-            Ok((stream, _)) = agent_listener.accept() => {
-                let state = Arc::clone(&state);
-                tokio::spawn(async move {
-                    if let Err(e) = handle_agent_client(stream, state).await {
-                        eprintln!("❌ Agent connection rejected: {}", e);
-                    }
-                });
-            }
             Ok((stream, _)) = control_listener.accept() => {
                 let state = Arc::clone(&state);
                 tokio::spawn(async move {
@@ -98,17 +123,27 @@ async fn main() -> Result<()> {
                     }
                 });
             }
+            Ok((stream, _)) = registration_listener.accept() => {
+                let state = Arc::clone(&state);
+                tokio::spawn(async move {
+                    if let Err(e) = handle_registration_client(stream, state).await {
+                        eprintln!("❌ Launcher registration rejected: {}", e);
+                    }
+                });
+            }
         }
     }
 }
 
-async fn handle_agent_client(mut stream: UnixStream, state: Arc<DaemonState>) -> Result<()> {
-    // macOS `audit_token_t` extraction remains a production hardening step.
-    // For the MVP, capture peer credentials at accept time, then require a nonce handshake.
+async fn handle_agent_client(stream: UnixStream, state: Arc<DaemonState>) -> Result<()> {
     let creds = stream.peer_cred()?;
 
     if creds.uid() != state.allowed_uid {
-        bail!("Unauthorized UID: {}. Only UID {} is allowed.", creds.uid(), state.allowed_uid);
+        bail!(
+            "Unauthorized UID: {}. Only UID {} is allowed.",
+            creds.uid(),
+            state.allowed_uid
+        );
     }
 
     let mut identity = ConnectionIdentity {
@@ -119,40 +154,41 @@ async fn handle_agent_client(mut stream: UnixStream, state: Arc<DaemonState>) ->
     };
 
     println!(
-        "✅ Verified peer UID: {} | PID: {}",
-        identity.peer_uid, identity.peer_pid
+        "✅ Verified peer UID: {} | PID: {} | GID: {}",
+        identity.peer_uid, identity.peer_pid, identity.peer_gid
     );
 
-    let mut buffer = BytesMut::with_capacity(4096);
-    buffer.resize(4096, 0);
-    let bytes_read = stream.read(&mut buffer).await?;
-
-    if bytes_read == 0 {
+    let mut lines = BufReader::new(stream).lines();
+    let Some(line) = lines.next_line().await? else {
         bail!("Agent disconnected before sending security.identify handshake.");
-    }
+    };
 
-    let handshake: SecurityIdentifyHandshake = serde_json::from_slice(&buffer[..bytes_read])
+    let handshake: SecurityIdentifyHandshake = serde_json::from_str(&line)
         .context("Failed to decode security.identify handshake JSON")?;
 
     if handshake.method != "security.identify" {
         bail!("First packet must be security.identify, got: {}", handshake.method);
     }
 
-    let identity_path = format!(
-        "/tmp/security-island/{}/agents/{}/identity.json",
-        identity.peer_uid, handshake.params.agent_id
-    );
-
-    let identity_bytes = std::fs::read(&identity_path)
-        .with_context(|| format!("Failed to load identity file: {}", identity_path))?;
-    let expected: IdentityRecord = serde_json::from_slice(&identity_bytes)
-        .with_context(|| format!("Failed to parse identity file: {}", identity_path))?;
+    let expected = state
+        .registered_agents
+        .lock()
+        .await
+        .get(&handshake.params.agent_id)
+        .cloned()
+        .with_context(|| {
+            format!(
+                "Agent {} is not registered with daemon",
+                handshake.params.agent_id
+            )
+        })?;
 
     if expected.uid != identity.peer_uid {
         bail!("Identity file UID mismatch for agent {}", expected.agent_id);
     }
 
-    if expected.session_nonce != handshake.params.session_nonce {
+    let presented_nonce_hash = hash_session_nonce(&handshake.params.session_nonce);
+    if expected.session_nonce != presented_nonce_hash {
         bail!("Session nonce mismatch for agent {}", expected.agent_id);
     }
 
@@ -172,22 +208,368 @@ async fn handle_agent_client(mut stream: UnixStream, state: Arc<DaemonState>) ->
         "🔐 Nonce handshake validated for agent {} (pid={}, validated={})",
         expected.agent_id, identity.peer_pid, identity.session_nonce_validated
     );
-    audit(&state, "agent_authenticated", "Agent nonce and PID validated", None, Some(&expected.agent_id));
+    audit(
+        &state,
+        "agent_authenticated",
+        "Agent nonce hash and PID validated",
+        None,
+        Some(&expected.agent_id),
+    );
 
-    // In prod: Continue reading capability JSON, evaluate policy, and optionally forward.
+    while let Some(line) = lines.next_line().await? {
+        let frame = line.trim();
+        if frame.is_empty() {
+            continue;
+        }
+
+        let request: CapabilityRequest = match serde_json::from_str(frame) {
+            Ok(request) => request,
+            Err(error) => {
+                eprintln!("⚠️ Failed to decode capability frame: {}", error);
+                audit(
+                    &state,
+                    "capability_frame_invalid",
+                    "Agent sent invalid capability frame",
+                    None,
+                    Some(&expected.agent_id),
+                );
+                continue;
+            }
+        };
+
+        handle_capability_request(&state, &expected, &identity, request).await?;
+    }
+
+    audit(
+        &state,
+        "agent_disconnected",
+        "Authenticated agent disconnected",
+        None,
+        Some(&expected.agent_id),
+    );
     Ok(())
+}
+
+async fn handle_capability_request(
+    state: &Arc<DaemonState>,
+    identity_record: &IdentityRecord,
+    connection_identity: &ConnectionIdentity,
+    request: CapabilityRequest,
+) -> Result<()> {
+    match classify_request(&request) {
+        PolicyDecision::Allow { reason } => {
+            audit(
+                state,
+                "capability_allowed",
+                reason,
+                None,
+                Some(&identity_record.agent_id),
+            );
+        }
+        PolicyDecision::Watch(template) => {
+            let incident = build_incident(
+                state,
+                identity_record,
+                connection_identity,
+                request,
+                template,
+            )?;
+
+            state
+                .pending_incidents
+                .lock()
+                .await
+                .insert(incident.incident_id.clone(), incident.clone());
+            audit(
+                state,
+                "incident_created",
+                "Watch incident created from capability request",
+                Some(&incident.incident_id),
+                Some(&identity_record.agent_id),
+            );
+            broadcast_control_message(state, ControlMessage::Incident(Box::new(incident))).await;
+        }
+        PolicyDecision::Block(template) => {
+            let incident = build_incident(
+                state,
+                identity_record,
+                connection_identity,
+                request,
+                template,
+            )?;
+
+            state
+                .pending_incidents
+                .lock()
+                .await
+                .insert(incident.incident_id.clone(), incident.clone());
+            audit(
+                state,
+                "incident_created",
+                "Blocking incident created from capability request",
+                Some(&incident.incident_id),
+                Some(&identity_record.agent_id),
+            );
+            broadcast_control_message(state, ControlMessage::Incident(Box::new(incident))).await;
+        }
+    }
+
+    Ok(())
+}
+
+fn classify_request(request: &CapabilityRequest) -> PolicyDecision {
+    let payload = request.payload.to_lowercase();
+    let capability = request.capability.as_str();
+
+    if capability == "browser.eval" && contains_any(&payload, &["document.cookie", "localstorage", "sessionstorage", "bearer ", "api_key", "token"]) {
+        return PolicyDecision::Block(IncidentTemplate {
+            state: IncidentState::PendingDecision,
+            severity: Severity::Critical,
+            reason: "browser script targets browser-held secrets",
+            rule_id: "SI-BROWSER-01",
+            risk: 98,
+            evidence: vec![format!("browser.eval payload matched secret access pattern: {}", request.payload)],
+            regex: Some("document.cookie|localStorage|sessionStorage|bearer|api_key|token".to_string()),
+            allowed_actions: vec![
+                AllowedAction::AllowOnce,
+                AllowedAction::ContinueWatched,
+                AllowedAction::Kill,
+                AllowedAction::LlmJudge,
+            ],
+        });
+    }
+
+    if matches!(capability, "terminal.exec" | "terminal.send_text")
+        && contains_any(&payload, &["curl ", "wget ", "chmod +x", "sudo ", "rm -rf", "launchctl", "osascript", "ssh "])
+    {
+        return PolicyDecision::Block(IncidentTemplate {
+            state: IncidentState::PendingDecision,
+            severity: Severity::High,
+            reason: "shell request matched high-risk execution pattern",
+            rule_id: "SI-TERM-01",
+            risk: 90,
+            evidence: vec![format!("terminal payload matched high-risk shell pattern: {}", request.payload)],
+            regex: Some("curl|wget|chmod \\+x|sudo|rm -rf|launchctl|osascript|ssh".to_string()),
+            allowed_actions: vec![
+                AllowedAction::AllowOnce,
+                AllowedAction::ContinueWatched,
+                AllowedAction::Kill,
+                AllowedAction::LlmJudge,
+            ],
+        });
+    }
+
+    if matches!(capability, "terminal.read_file" | "terminal.exec" | "terminal.send_text")
+        && contains_any(&payload, &[".env", ".ssh", "id_rsa", "id_ed25519", "/etc/passwd", "aws_secret_access_key", "ghp_"])
+    {
+        return PolicyDecision::Watch(IncidentTemplate {
+            state: IncidentState::Watch,
+            severity: Severity::Medium,
+            reason: "request touched a sensitive file or token pattern",
+            rule_id: "SI-DATA-01",
+            risk: 65,
+            evidence: vec![format!("payload matched sensitive path or token indicator: {}", request.payload)],
+            regex: Some("\\.env|\\.ssh|id_rsa|id_ed25519|/etc/passwd|aws_secret_access_key|ghp_".to_string()),
+            allowed_actions: vec![AllowedAction::ContinueWatched, AllowedAction::Kill],
+        });
+    }
+
+    if capability == "browser.eval" {
+        return PolicyDecision::Watch(IncidentTemplate {
+            state: IncidentState::Watch,
+            severity: Severity::Medium,
+            reason: "browser script execution is allowed only under watch in MVP policy",
+            rule_id: "SI-BROWSER-00",
+            risk: 55,
+            evidence: vec![format!("browser.eval executed without secret-match payload: {}", request.payload)],
+            regex: None,
+            allowed_actions: vec![AllowedAction::ContinueWatched, AllowedAction::Kill],
+        });
+    }
+
+    PolicyDecision::Allow {
+        reason: "request stayed on the explicit low-risk MVP path",
+    }
+}
+
+fn contains_any(haystack: &str, needles: &[&str]) -> bool {
+    needles.iter().any(|needle| haystack.contains(needle))
+}
+
+fn build_incident(
+    state: &DaemonState,
+    identity_record: &IdentityRecord,
+    connection_identity: &ConnectionIdentity,
+    request: CapabilityRequest,
+    template: IncidentTemplate,
+) -> Result<Incident> {
+    let pid = connection_identity.peer_pid;
+    let pgid = identity_record
+        .pgid
+        .map(|value| value as i32)
+        .unwrap_or(connection_identity.peer_pid);
+
+    Ok(Incident {
+        incident_id: state.next_incident_id(),
+        actor: ActorContext {
+            uid: connection_identity.peer_uid,
+            process: identity_record.socket_path.clone(),
+            agent_id: identity_record.agent_id.clone(),
+        },
+        cmux: CmuxContext {
+            workspace_id: format!("agent:{}", identity_record.agent_id),
+            surface_id: format!("surface:{}", identity_record.agent_id),
+            socket_path: identity_record.socket_path.clone(),
+        },
+        request,
+        pid,
+        pgid,
+        state: template.state,
+        risk: template.risk,
+        severity: template.severity,
+        reason: template.reason.to_string(),
+        rule_id: Some(template.rule_id.to_string()),
+        evidence: template.evidence,
+        filter_results: FilterResults {
+            regex: template.regex,
+            bash_ast: None,
+            magika: None,
+            llm: None,
+        },
+        created_at: now_rfc3339()?,
+        allowed_actions: template.allowed_actions,
+    })
+}
+
+fn now_rfc3339() -> Result<String> {
+    let now = unsafe { libc::time(std::ptr::null_mut()) };
+    let mut tm = std::mem::MaybeUninit::<libc::tm>::uninit();
+    let tm_ptr = unsafe { libc::gmtime_r(&now, tm.as_mut_ptr()) };
+    if tm_ptr.is_null() {
+        bail!("Failed to compute UTC timestamp for incident");
+    }
+
+    let tm = unsafe { tm.assume_init() };
+    Ok(format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
+        tm.tm_year + 1900,
+        tm.tm_mon + 1,
+        tm.tm_mday,
+        tm.tm_hour,
+        tm.tm_min,
+        tm.tm_sec
+    ))
+}
+
+async fn handle_registration_client(stream: UnixStream, state: Arc<DaemonState>) -> Result<()> {
+    let creds = stream.peer_cred()?;
+    if creds.uid() != state.allowed_uid {
+        bail!(
+            "Unauthorized launcher UID: {}. Only UID {} is allowed.",
+            creds.uid(),
+            state.allowed_uid
+        );
+    }
+
+    let mut lines = BufReader::new(stream).lines();
+    let Some(line) = lines.next_line().await? else {
+        bail!("Launcher disconnected before sending registration message.");
+    };
+
+    let message: RegistrationMessage = serde_json::from_str(&line)
+        .context("Failed to decode launcher registration message")?;
+    let ack = register_agent(Arc::clone(&state), message).await;
+
+    let mut stream = lines.into_inner();
+    let mut frame = serde_json::to_vec(&ack)?;
+    frame.push(b'\n');
+    stream.write_all(&frame).await?;
+    stream.flush().await?;
+
+    Ok(())
+}
+
+async fn register_agent(state: Arc<DaemonState>, message: RegistrationMessage) -> RegistrationAck {
+    let is_initial_registration = matches!(message, RegistrationMessage::RegisterAgent(_));
+    let record = match message {
+        RegistrationMessage::RegisterAgent(record) | RegistrationMessage::AgentStarted(record) => {
+            record
+        }
+    };
+
+    if record.uid != state.allowed_uid {
+        return RegistrationAck {
+            accepted: false,
+            message: Some(format!(
+                "Registration UID {} does not match daemon UID {}",
+                record.uid, state.allowed_uid
+            )),
+        };
+    }
+
+    state
+        .registered_agents
+        .lock()
+        .await
+        .insert(record.agent_id.clone(), record.clone());
+    audit(
+        &state,
+        "agent_registered",
+        "Launcher registered agent identity",
+        None,
+        Some(&record.agent_id),
+    );
+
+    if is_initial_registration {
+        let agent_id = record.agent_id.clone();
+        let socket_path = record.socket_path.clone();
+        let state_for_task = Arc::clone(&state);
+        tokio::spawn(async move {
+            if let Err(error) = bind_agent_socket(socket_path, state_for_task).await {
+                eprintln!("❌ Agent socket listener for {agent_id} failed: {error}");
+            }
+        });
+    }
+
+    RegistrationAck {
+        accepted: true,
+        message: None,
+    }
+}
+
+async fn bind_agent_socket(socket_path: String, state: Arc<DaemonState>) -> Result<()> {
+    let _ = std::fs::remove_file(&socket_path);
+    let listener = UnixListener::bind(&socket_path)
+        .with_context(|| format!("Failed to bind agent socket: {socket_path}"))?;
+    println!("🎧 Listening for registered agent on {socket_path}");
+
+    loop {
+        let (stream, _) = listener.accept().await?;
+        let state = Arc::clone(&state);
+        tokio::spawn(async move {
+            if let Err(e) = handle_agent_client(stream, state).await {
+                eprintln!("❌ Agent connection rejected: {}", e);
+            }
+        });
+    }
 }
 
 async fn handle_ui_client(stream: UnixStream, state: Arc<DaemonState>) -> Result<()> {
     let creds = stream.peer_cred()?;
     if creds.uid() != state.allowed_uid {
-        bail!("Unauthorized UI process UID: {}. Only UID {} is allowed.", creds.uid(), state.allowed_uid);
+        bail!(
+            "Unauthorized UI process UID: {}. Only UID {} is allowed.",
+            creds.uid(),
+            state.allowed_uid
+        );
     }
 
     println!("🖥  SwiftUI Dashboard connected.");
     audit(&state, "ui_connected", "SwiftUI dashboard connected", None, None);
 
-    let (reader, mut writer) = stream.into_split();
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    state.ui_clients.lock().await.push(tx.clone());
+
     if state.demo_mode {
         let incident = demo_incident(state.allowed_uid);
         state
@@ -196,37 +578,52 @@ async fn handle_ui_client(stream: UnixStream, state: Arc<DaemonState>) -> Result
             .await
             .insert(incident.incident_id.clone(), incident.clone());
 
-        audit(&state, "incident_created", "Daemon demo incident emitted", Some(&incident.incident_id), Some(&incident.actor.agent_id));
-        write_frame(&mut writer, &ControlMessage::Incident(Box::new(incident)))
-            .await
-            .context("Failed to send demo incident to UI")?;
-        write_frame(
-            &mut writer,
-            &ControlMessage::Focus(shared::control::FocusEvent {
-                surface_id: "surface:daemon-demo".to_string(),
-            }),
-        )
-        .await
-        .context("Failed to send demo focus event to UI")?;
+        audit(
+            &state,
+            "incident_created",
+            "Daemon demo incident emitted",
+            Some(&incident.incident_id),
+            Some(&incident.actor.agent_id),
+        );
+        let _ = tx.send(ControlMessage::Incident(Box::new(incident)));
+        let _ = tx.send(ControlMessage::Focus(shared::control::FocusEvent {
+            surface_id: "surface:daemon-demo".to_string(),
+        }));
     }
 
+    let (reader, mut writer) = stream.into_split();
     let mut lines = BufReader::new(reader).lines();
-    while let Some(line) = lines.next_line().await? {
-        if line.trim().is_empty() {
-            continue;
-        }
 
-        match serde_json::from_str::<DecisionCommand>(&line) {
-            Ok(command) => {
-                println!(
-                    "📨 UI decision received: {:?} for {}",
-                    command.action, command.incident_id
-                );
-                let ack = acknowledge_decision(&state, command).await;
-                write_frame(&mut writer, &ControlMessage::DecisionAck(ack)).await?;
+    loop {
+        tokio::select! {
+            maybe_message = rx.recv() => {
+                let Some(message) = maybe_message else {
+                    break;
+                };
+                write_frame(&mut writer, &message).await?;
             }
-            Err(error) => {
-                eprintln!("⚠️ Failed to decode UI decision frame: {}", error);
+            maybe_line = lines.next_line() => {
+                let Some(line) = maybe_line? else {
+                    break;
+                };
+
+                if line.trim().is_empty() {
+                    continue;
+                }
+
+                match serde_json::from_str::<DecisionCommand>(&line) {
+                    Ok(command) => {
+                        println!(
+                            "📨 UI decision received: {:?} for {}",
+                            command.action, command.incident_id
+                        );
+                        let ack = acknowledge_decision(&state, command).await;
+                        write_frame(&mut writer, &ControlMessage::DecisionAck(ack)).await?;
+                    }
+                    Err(error) => {
+                        eprintln!("⚠️ Failed to decode UI decision frame: {}", error);
+                    }
+                }
             }
         }
     }
@@ -234,6 +631,11 @@ async fn handle_ui_client(stream: UnixStream, state: Arc<DaemonState>) -> Result
     println!("🖥  SwiftUI Dashboard disconnected.");
     audit(&state, "ui_disconnected", "SwiftUI dashboard disconnected", None, None);
     Ok(())
+}
+
+async fn broadcast_control_message(state: &DaemonState, message: ControlMessage) {
+    let mut clients = state.ui_clients.lock().await;
+    clients.retain(|client| client.send(message.clone()).is_ok());
 }
 
 async fn acknowledge_decision(state: &DaemonState, command: DecisionCommand) -> DecisionAck {
@@ -249,7 +651,13 @@ async fn acknowledge_decision(state: &DaemonState, command: DecisionCommand) -> 
     };
 
     let action_message = apply_process_action(&incident, &command.action);
-    audit(state, "decision_accepted", "UI decision accepted by daemon", Some(&incident.incident_id), Some(&incident.actor.agent_id));
+    audit(
+        state,
+        "decision_accepted",
+        "UI decision accepted by daemon",
+        Some(&incident.incident_id),
+        Some(&incident.actor.agent_id),
+    );
 
     DecisionAck {
         incident_id: command.incident_id,
@@ -279,7 +687,9 @@ fn signal_process_group(pgid: i32, signal: libc::c_int) -> std::result::Result<(
         Ok(())
     } else {
         let error = std::io::Error::last_os_error();
-        Err(format!("Failed to send signal {signal} to pgid {pgid}: {error}"))
+        Err(format!(
+            "Failed to send signal {signal} to pgid {pgid}: {error}"
+        ))
     }
 }
 
