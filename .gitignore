@@ -29,7 +29,14 @@ secrets.json
 credentials.json
 *.ovpn
 
+# Build artifacts
+.build/
+.swiftpm/
+target/
+daemon/target/
+
 # Project Specific
-/docs/
+/docs/*
+!/docs/hackathon-presentation.md
 agents.md
 AGENTS.md
