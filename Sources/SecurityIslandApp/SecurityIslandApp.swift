@@ -4,16 +4,18 @@ import SecurityIslandUI
 
 @main
 struct SecurityIslandApp: App {
-    @StateObject private var bus = DecisionBus()
+    @StateObject private var bus: DecisionBus
     @StateObject private var userService = SystemUserService()
+    @StateObject private var daemonClient: DaemonControlClient
+    @State private var didStart = false
     
-    // The client that talks to the Rust Daemon
-    private var daemonClient: DaemonControlClient?
+    private let demoMode: Bool
 
     init() {
         let busInstance = DecisionBus()
         _bus = StateObject(wrappedValue: busInstance)
-        self.daemonClient = DaemonControlClient(bus: busInstance)
+        _daemonClient = StateObject(wrappedValue: DaemonControlClient(bus: busInstance))
+        self.demoMode = ProcessInfo.processInfo.environment["SECURITY_ISLAND_DEMO"] == "1"
     }
 
     var body: some Scene {
@@ -21,15 +23,17 @@ struct SecurityIslandApp: App {
             MainDashboardView()
                 .environmentObject(bus)
                 .environmentObject(userService)
+                .environmentObject(daemonClient)
                 .onAppear {
+                    guard !didStart else { return }
+                    didStart = true
                     setupSwarmPlugins()
+                    daemonClient.start()
                     
-                    // Connect to Rust Daemon over control socket
-                    daemonClient?.start()
-                    
-                    Task {
-                        // Seed mock data for hackathon demo
-                        await DemoSeeder.seed(bus: bus)
+                    if demoMode {
+                        Task {
+                            await DemoSeeder.seed(bus: bus)
+                        }
                     }
                 }
         }
@@ -40,10 +44,6 @@ struct SecurityIslandApp: App {
     
     @MainActor
     private func setupSwarmPlugins() {
-        // 1. Magika Deep Scanner
-        let magika = MagikaScanner()
-        bus.register(plugin: magika)
-        
         // 2. Telegram Two-Way Adapter
         let token = ProcessInfo.processInfo.environment["SECURITY_ISLAND_TELEGRAM_BOT_TOKEN"] ?? "stub_token"
         let chatId = ProcessInfo.processInfo.environment["SECURITY_ISLAND_TELEGRAM_ALLOWED_CHAT_IDS"] ?? "stub_chat_id"
