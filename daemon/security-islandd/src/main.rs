@@ -1,4 +1,5 @@
 mod scanners;
+mod setup;
 
 use anyhow::{bail, Context, Result};
 use scanners::Pipeline;
@@ -114,8 +115,16 @@ async fn main() -> Result<()> {
     std::fs::set_permissions(&registration_socket, std::fs::Permissions::from_mode(0o700))
         .with_context(|| format!("Failed to secure registration socket: {}", registration_socket))?;
 
+    // Auto-configure Cmux and Shims
+    if let Err(e) = setup::ensure_cmux_config(allowed_uid) {
+        eprintln!("Warning: Failed to ensure cmux config: {}", e);
+    }
+    if let Err(e) = setup::ensure_shims(allowed_uid) {
+        eprintln!("Warning: Failed to ensure shims: {}", e);
+    }
+
     let public_cmux_socket = std::env::var("SECURITY_ISLAND_PUBLIC_CMUX_SOCKET")
-        .unwrap_or_else(|_| "/tmp/cmux.sock".to_string());
+        .unwrap_or_else(|_| format!("{runtime_dir}/cmux.sock"));
     let _ = std::fs::remove_file(&public_cmux_socket);
     let public_listener = UnixListener::bind(&public_cmux_socket)
         .with_context(|| format!("Failed to bind public cmux socket: {public_cmux_socket}"))?;
