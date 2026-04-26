@@ -1,46 +1,75 @@
 import Foundation
-
-// Dummy protocol for compilation purposes if it doesn't already exist
-public protocol ScannerPlugin {
-    var name: String { get }
-    func scan(filePath: String) async throws -> ScanResult
-}
-
-public struct ScanResult {
-    public let filePath: String
-    public let type: String
-    public let isExecutable: Bool
-    public let isSensitive: Bool
-    
-    public init(filePath: String, type: String, isExecutable: Bool, isSensitive: Bool) {
-        self.filePath = filePath
-        self.type = type
-        self.isExecutable = isExecutable
-        self.isSensitive = isSensitive
-    }
-}
+import IslandShared
 
 public enum ScannerError: Error {
     case executionFailed(String)
     case fileNotFound
 }
 
-public class MagikaScanner: ScannerPlugin {
-    public let name = "Magika"
+public final class MagikaScanner: ScannerPlugin {
+    public let id = "com.island.scanner.magika"
+    public let name = "Magika File Scanner"
     
     public init() {}
     
-    public func scan(filePath: String) async throws -> ScanResult {
-        let fileManager = FileManager.default
-        guard fileManager.fileExists(atPath: filePath) else {
-            throw ScannerError.fileNotFound
+    public func evaluate(request: CapabilityRequest, context: StatefulScanContext) async throws -> ScannerResult {
+        // Only run Magika if the capability involves a file read, execute, or write
+        // For now, let's just extract the file path from the payload.
+        // A naive heuristic: if payload contains a path, scan it.
+        // In a real scenario we'd parse the capability properly.
+        let components = request.payload.components(separatedBy: .whitespaces)
+        var evidence: [String] = []
+        var maxRisk = 0
+        var interventionRequired = false
+        
+        for component in components {
+            let filePath = component.trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+            guard filePath.hasPrefix("/") || filePath.hasPrefix("./") else { continue }
+            
+            // Resolve absolute path if relative to cwd
+            let resolvedPath = filePath.hasPrefix("./") ? 
+                request.cwd + String(filePath.dropFirst(1)) : filePath
+                
+            let fileManager = FileManager.default
+            if fileManager.fileExists(atPath: resolvedPath) {
+                do {
+                    let result = try await scan(filePath: resolvedPath)
+                    evidence.append("Magika found '\(result.type)' at \(resolvedPath)")
+                    if result.isExecutable {
+                        evidence.append("Executable file detected.")
+                        maxRisk = max(maxRisk, 30)
+                    }
+                    if result.isSensitive {
+                        evidence.append("Sensitive file detected.")
+                        maxRisk = max(maxRisk, 80)
+                        interventionRequired = true
+                    }
+                } catch {
+                    evidence.append("Magika scan failed for \(resolvedPath): \(error.localizedDescription)")
+                }
+            }
         }
         
+        return ScannerResult(
+            riskModifier: maxRisk,
+            requiresIntervention: interventionRequired,
+            evidence: evidence,
+            suggestedSeverity: interventionRequired ? .high : nil
+        )
+    }
+    
+    public struct ScanResult {
+        public let filePath: String
+        public let type: String
+        public let isExecutable: Bool
+        public let isSensitive: Bool
+    }
+    
+    private func scan(filePath: String) async throws -> ScanResult {
         let process = Process()
         let pipe = Pipe()
         let errorPipe = Pipe()
         
-        // We assume magika is in the PATH. Use env to locate it.
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = ["magika", filePath]
         process.standardOutput = pipe
@@ -64,7 +93,6 @@ public class MagikaScanner: ScannerPlugin {
             throw ScannerError.executionFailed("Could not read magika output")
         }
         
-        // Magika default output format is usually: "path/to/file: file type description"
         let typeDescription: String
         if let colonIndex = output.firstIndex(of: ":") {
             let afterColon = output.index(after: colonIndex)
@@ -75,14 +103,12 @@ public class MagikaScanner: ScannerPlugin {
         
         let lowerType = typeDescription.lowercased()
         
-        // Basic heuristic for executables
         let isExecutable = lowerType.contains("executable") || 
                            lowerType.contains("mach-o") || 
                            lowerType.contains("elf") || 
                            lowerType.contains("pe32") ||
                            lowerType.contains("script")
                            
-        // Basic heuristic for sensitive files
         let isSensitive = lowerType.contains("private key") || 
                           lowerType.contains("pem") || 
                           lowerType.contains("certificate") || 
