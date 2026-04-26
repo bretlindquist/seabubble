@@ -97,12 +97,10 @@ public struct Incident: Identifiable, Codable {
     
     enum CodingKeys: String, CodingKey {
         case id = "incident_id"
-        case agentId = "agent_id"
-        case paneId = "pane_id"
+        case actor, cmux, request
         case pid, pgid, state, risk, severity, reason
         case ruleId = "rule_id"
-        case rawRedacted = "raw_redacted"
-        case normalized, evidence
+        case evidence
         case filterResults = "filter_results"
         case createdAt = "created_at"
         case allowedActions = "allowed_actions"

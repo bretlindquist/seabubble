@@ -6,6 +6,9 @@ import SecurityIslandUI
 struct SecurityIslandApp: App {
     @StateObject private var bus = DecisionBus()
     @StateObject private var userService = SystemUserService()
+    
+    // Hold a strong reference to the broker so it stays alive
+    private let broker = CmuxSocketBroker()
 
     var body: some Scene {
         WindowGroup("Security Island") {
@@ -14,6 +17,10 @@ struct SecurityIslandApp: App {
                 .environmentObject(userService)
                 .onAppear {
                     setupSwarmPlugins()
+                    
+                    // Start the UNIX Socket MITM Proxy
+                    broker.start()
+                    
                     Task {
                         // Seed mock data for hackathon demo
                         await DemoSeeder.seed(bus: bus)

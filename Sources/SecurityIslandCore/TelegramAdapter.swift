@@ -33,11 +33,12 @@ public final class TelegramAdapter: SecurityPlugin {
     private func sendAlert(for incident: Incident) async {
         let message = """
         🏝 SECURITY ISLAND HOLD 🏝
-        Agent: \(incident.agentId)
+        Agent: \(incident.actor.agentId)
         Risk: \(incident.risk)
         Severity: \(incident.severity.rawValue.uppercased())
         Reason: \(incident.reason)
-        Command: \(incident.rawRedacted)
+        Capability: \(incident.request.capability)
+        Payload: \(incident.request.payload)
         
         Decision required: [Allow] [Watch] [Kill]
         """

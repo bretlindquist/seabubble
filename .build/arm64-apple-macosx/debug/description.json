@@ -119,6 +119,10 @@
       "inputs" : [
         {
           "kind" : "file",
+          "name" : "/Users/bretlindquist/.openclaw/workspace/Sources/SecurityIslandCore/CmuxSocketBroker.swift"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/bretlindquist/.openclaw/workspace/Sources/SecurityIslandCore/DecisionBus.swift"
         },
         {
@@ -158,6 +162,7 @@
       "moduleName" : "SecurityIslandCore",
       "moduleOutputPath" : "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/Modules/SecurityIslandCore.swiftmodule",
       "objects" : [
+        "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/CmuxSocketBroker.swift.o",
         "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/DecisionBus.swift.o",
         "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/DemoSeeder.swift.o",
         "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/MagikaScanner.swift.o",
@@ -214,6 +219,10 @@
       "outputs" : [
         {
           "kind" : "file",
+          "name" : "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/CmuxSocketBroker.swift.o"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/DecisionBus.swift.o"
         },
         {
@@ -247,6 +256,7 @@
       ],
       "prepareForIndexing" : false,
       "sources" : [
+        "/Users/bretlindquist/.openclaw/workspace/Sources/SecurityIslandCore/CmuxSocketBroker.swift",
         "/Users/bretlindquist/.openclaw/workspace/Sources/SecurityIslandCore/DecisionBus.swift",
         "/Users/bretlindquist/.openclaw/workspace/Sources/SecurityIslandCore/DemoSeeder.swift",
         "/Users/bretlindquist/.openclaw/workspace/Sources/SecurityIslandCore/MagikaScanner.swift",
@@ -448,6 +458,7 @@
       "workspace",
       "-incremental",
       "-c",
+      "/Users/bretlindquist/.openclaw/workspace/Sources/SecurityIslandCore/CmuxSocketBroker.swift",
       "/Users/bretlindquist/.openclaw/workspace/Sources/SecurityIslandCore/DecisionBus.swift",
       "/Users/bretlindquist/.openclaw/workspace/Sources/SecurityIslandCore/DemoSeeder.swift",
       "/Users/bretlindquist/.openclaw/workspace/Sources/SecurityIslandCore/MagikaScanner.swift",
@@ -622,6 +633,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/CmuxSocketBroker.swift.o"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/bretlindquist/.openclaw/workspace/.build/arm64-apple-macosx/debug/SecurityIslandCore.build/DecisionBus.swift.o"
         },
         {
@@ -673,6 +688,10 @@
         {
           "kind" : "virtual",
           "name" : "<sources-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bretlindquist/.openclaw/workspace/Sources/SecurityIslandCore/CmuxSocketBroker.swift"
         },
         {
           "kind" : "file",

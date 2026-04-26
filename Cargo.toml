@@ -1,0 +1,8 @@
+[package]
+name = "seaturtle"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ratatui = "0.26"
+tokio = { version = "1.52.1", features = ["fs", "macros", "sync"] }

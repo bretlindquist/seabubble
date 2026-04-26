@@ -18,7 +18,10 @@ public struct ForensicDetailView: View {
                     VStack(alignment: .leading) {
                         Text("Incident: \(incident.id)")
                             .font(.title2.bold())
-                        Text("Agent: \(incident.agentId) | Pane: \(incident.paneId)")
+                        Text("Agent: \(incident.actor.agentId) | Process: \(incident.actor.process)")
+                            .foregroundStyle(.secondary)
+                        Text("Workspace: \(incident.cmux.workspaceId) | Surface: \(incident.cmux.surfaceId)")
+                            .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
@@ -41,8 +44,17 @@ public struct ForensicDetailView: View {
                 
                 // FORENSIC DATA
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Command Executed").font(.headline)
-                    Text(incident.rawRedacted)
+                    Text("Capability Requested").font(.headline)
+                    Text(incident.request.capability)
+                        .font(.system(.body, design: .monospaced))
+                        .padding()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.blue.opacity(0.1))
+                        .foregroundStyle(.blue)
+                        .cornerRadius(8)
+                    
+                    Text("Payload (Redacted)").font(.headline).padding(.top, 10)
+                    Text(incident.request.payload)
                         .font(.system(.body, design: .monospaced))
                         .padding()
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -50,8 +62,8 @@ public struct ForensicDetailView: View {
                         .foregroundStyle(.green)
                         .cornerRadius(8)
                     
-                    Text("Normalized Intent").font(.headline).padding(.top, 10)
-                    Text(incident.normalized)
+                    Text("Context").font(.headline).padding(.top, 10)
+                    Text("CWD: \(incident.request.cwd)")
                         .font(.system(.subheadline, design: .monospaced))
                         .padding()
                         .frame(maxWidth: .infinity, alignment: .leading)

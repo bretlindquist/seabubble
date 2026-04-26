@@ -13,8 +13,8 @@ public final class MagikaScanner: SecurityPlugin {
         // For the hackathon MVP demo, we apply heuristics based on the command
         // to simulate Magika detecting a disguised executable.
         
-        if incident.rawRedacted.contains("downloaded_tool") {
-            print("[\(name)] 🔍 Scanning artifacts for '\(incident.agentId)' via Magika...")
+        if incident.request.payload.contains("downloaded_tool") {
+            print("[\(name)] 🔍 Scanning artifacts for '\(incident.actor.agentId)' via Magika...")
             
             // Simulate deep-scan latency
             try? await Task.sleep(nanoseconds: 300_000_000)

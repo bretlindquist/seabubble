@@ -20,7 +20,7 @@ public struct SidebarView: View {
                                 .frame(width: 10, height: 10)
                             
                             VStack(alignment: .leading) {
-                                Text(incident.agentId)
+                                Text(incident.actor.agentId)
                                     .font(.headline)
                                 Text(incident.state.rawValue.replacingOccurrences(of: "_", with: " ").capitalized)
                                     .font(.caption)
