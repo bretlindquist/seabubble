@@ -8,6 +8,7 @@ let package = Package(
     ],
     products: [
         .executable(name: "SecurityIslandApp", targets: ["SecurityIslandApp"]),
+        .executable(name: "SecurityIslandDaemon", targets: ["SecurityIslandDaemon"]),
         .library(name: "SecurityIslandCore", targets: ["SecurityIslandCore"]),
         .library(name: "SecurityIslandUI", targets: ["SecurityIslandUI"])
     ],
@@ -19,6 +20,10 @@ let package = Package(
         .target(
             name: "SecurityIslandCore",
             dependencies: []
+        ),
+        .executableTarget(
+            name: "SecurityIslandDaemon",
+            dependencies: ["SecurityIslandCore"]
         ),
         .target(
             name: "SecurityIslandUI",
