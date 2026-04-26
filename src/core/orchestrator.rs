@@ -16,6 +16,56 @@ pub async fn handle_gh_issues(repo: &str, tx: tokio::sync::mpsc::UnboundedSender
     }
 }
 
+pub async fn compact_history(mut history: Vec<crate::core::types::ChatMessage>) -> Vec<crate::core::types::ChatMessage> {
+    if history.len() <= 10 {
+        return history;
+    }
+
+    let mut to_compact = Vec::new();
+    let mut indices_to_remove = Vec::new();
+
+    for (i, msg) in history.iter().enumerate() {
+        if matches!(msg.role, Role::User | Role::Assistant) {
+            to_compact.push(msg.content.clone());
+            indices_to_remove.push(i);
+            if to_compact.len() == 5 {
+                break;
+            }
+        }
+    }
+
+    if to_compact.is_empty() {
+        return history;
+    }
+
+    let mut compacted_text = String::from("[SYSTEM: The following context was compacted: ");
+    for text in to_compact {
+        let snippet = if text.len() > 50 {
+            &text[..50]
+        } else {
+            &text
+        };
+        compacted_text.push_str(snippet);
+        compacted_text.push_str(" | ");
+    }
+    compacted_text.push_str("]");
+
+    // Remove in reverse order to keep indices valid
+    for &i in indices_to_remove.iter().rev() {
+        history.remove(i);
+    }
+
+    // Insert the compacted message where the first message was removed
+    if let Some(&first_idx) = indices_to_remove.first() {
+        history.insert(first_idx, ChatMessage {
+            role: Role::System,
+            content: compacted_text,
+        });
+    }
+
+    history
+}
+
 pub async fn execute_tool(
     call: ToolCall,
     mcp_client: Arc<McpClientImpl>,

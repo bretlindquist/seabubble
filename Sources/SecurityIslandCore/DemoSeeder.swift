@@ -4,6 +4,14 @@ import Foundation
 public struct DemoSeeder {
     public static func seed(bus: DecisionBus) async {
         
+        // Let's also mock a FocusEvent landing 2 seconds after boot
+        Task {
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            await MainActor.run {
+                bus.activeSurfaceId = "surface:4"
+            }
+        }
+        
         // 1. Safe Agent (Green)
         await bus.appendIncident(Incident(
             id: "SI-000001",

@@ -6,6 +6,7 @@ import Foundation
 public final class DecisionBus: ObservableObject {
     @Published public private(set) var incidents: [Incident] = []
     @Published public private(set) var decisions: [Decision] = []
+    @Published public var activeSurfaceId: String?
     
     private var plugins: [SecurityPlugin] = []
     

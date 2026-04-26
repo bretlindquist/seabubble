@@ -10,34 +10,54 @@ public struct SidebarView: View {
     }
     
     public var body: some View {
-        List(selection: $selectedIncidentId) {
-            Section("Monitored Agents") {
-                ForEach(bus.incidents) { incident in
-                    NavigationLink(value: incident.id) {
-                        HStack {
-                            Circle()
-                                .fill(color(for: incident.state, severity: incident.severity))
-                                .frame(width: 10, height: 10)
-                            
-                            VStack(alignment: .leading) {
-                                Text(incident.actor.agentId)
-                                    .font(.headline)
-                                Text(incident.state.rawValue.replacingOccurrences(of: "_", with: " ").capitalized)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+        ScrollViewReader { proxy in
+            List(selection: $selectedIncidentId) {
+                Section("Monitored Agents") {
+                    ForEach(bus.incidents) { incident in
+                        NavigationLink(value: incident.id) {
+                            HStack {
+                                Circle()
+                                    .fill(color(for: incident.state, severity: incident.severity))
+                                    .frame(width: 10, height: 10)
+                                
+                                VStack(alignment: .leading) {
+                                    Text(incident.actor.agentId)
+                                        .font(.headline)
+                                    Text(incident.state.rawValue.replacingOccurrences(of: "_", with: " ").capitalized)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                
+                                Spacer()
+                                
+                                if bus.activeSurfaceId == incident.cmux.surfaceId {
+                                    Image(systemName: "bolt.fill")
+                                        .foregroundStyle(.blue)
+                                        .font(.caption)
+                                        .help("Active cmux surface")
+                                }
+                                
+                                Text("Risk: \(incident.risk)")
+                                    .font(.caption.monospacedDigit())
+                                    .foregroundStyle(incident.risk > 80 ? .red : .secondary)
                             }
-                            
-                            Spacer()
-                            
-                            Text("Risk: \(incident.risk)")
-                                .font(.caption.monospacedDigit())
-                                .foregroundStyle(incident.risk > 80 ? .red : .secondary)
                         }
+                        .id(incident.id)
+                    }
+                }
+            }
+            .navigationTitle("Security Island")
+            .onChange(of: bus.activeSurfaceId) { newSurfaceId in
+                // When cmux changes focus, auto-select the incident for that pane if it requires attention
+                if let surfaceId = newSurfaceId,
+                   let matchingIncident = bus.incidents.first(where: { $0.cmux.surfaceId == surfaceId }) {
+                    withAnimation {
+                        selectedIncidentId = matchingIncident.id
+                        proxy.scrollTo(matchingIncident.id, anchor: .center)
                     }
                 }
             }
         }
-        .navigationTitle("Security Island")
     }
     
     private func color(for state: IncidentState, severity: Severity) -> Color {

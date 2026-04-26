@@ -58,13 +58,41 @@ public final class DaemonControlClient {
     
     private func process(data: Data) {
         let decoder = JSONDecoder()
+        
+        // In the new architecture, the daemon sends a tagged ControlMessage
+        // {"type": "Focus", "payload": {"surface_id": "surface:4"}}
+        // {"type": "Incident", "payload": { ... }}
+        
+        // For Hackathon MVP backward compatibility with our mock payload,
+        // we will try to decode it as an Incident first.
         do {
-            let incident = try decoder.decode(Incident.self, from: data)
-            Task { @MainActor [weak self] in
-                await self?.bus?.appendIncident(incident)
+            if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let type = json["type"] as? String,
+               let payloadDict = json["payload"] {
+                
+                let payloadData = try JSONSerialization.data(withJSONObject: payloadDict)
+                
+                if type == "Incident" {
+                    let incident = try decoder.decode(Incident.self, from: payloadData)
+                    Task { @MainActor [weak self] in
+                        await self?.bus?.appendIncident(incident)
+                    }
+                } else if type == "Focus" {
+                    struct FocusEvent: Decodable { let surface_id: String }
+                    let focus = try decoder.decode(FocusEvent.self, from: payloadData)
+                    Task { @MainActor [weak self] in
+                        self?.bus?.activeSurfaceId = focus.surface_id
+                    }
+                }
+            } else {
+                // Fallback for direct Incident JSON (from DemoSeeder / old tests)
+                let incident = try decoder.decode(Incident.self, from: data)
+                Task { @MainActor [weak self] in
+                    await self?.bus?.appendIncident(incident)
+                }
             }
         } catch {
-            print("⚠️ Failed to decode incident from daemon: \(error)")
+            print("⚠️ Failed to decode control message from daemon: \(error)")
         }
     }
     

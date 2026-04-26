@@ -14,6 +14,7 @@ pub struct AppState {
     pub input_buffer: String,
     pub search_results: Vec<usize>,
     pub search_index: usize,
+    pub token_estimate: usize,
 }
 
 #[derive(Clone)]
@@ -32,14 +33,18 @@ pub struct ToolResult {
 pub enum AppEvent {
     ToolCallResult(ToolResult),
     TelegramMessage { chat_id: i64, text: String },
+    ContextWarning,
+    HistoryCompacted(Vec<ChatMessage>),
 }
 
+#[derive(Clone)]
 pub enum Role {
     User,
     System,
     Assistant,
 }
 
+#[derive(Clone)]
 pub struct ChatMessage {
     pub role: Role,
     pub content: String,

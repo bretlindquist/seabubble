@@ -100,6 +100,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     content: format!("[Telegram from {}] {}", chat_id, text),
                 });
             }
+            core::types::AppEvent::ContextWarning => {
+                // Pause stream by changing mode if streaming
+                if let AppMode::Streaming = state.mode {
+                    state.mode = AppMode::Steering;
+                }
+                let messages = state.messages.clone();
+                let tx_clone = tx.clone();
+                tokio::spawn(async move {
+                    let compacted = core::orchestrator::compact_history(messages).await;
+                    let _ = tx_clone.send(core::types::AppEvent::HistoryCompacted(compacted));
+                });
+            }
+            core::types::AppEvent::HistoryCompacted(new_messages) => {
+                state.messages = new_messages;
+                // Resume stream
+                if let AppMode::Steering = state.mode {
+                    state.mode = AppMode::Streaming;
+                }
+            }
         }
     }
 
