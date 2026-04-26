@@ -8,3 +8,6 @@ serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 hex = "0.4"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+libc = "0.2.186"

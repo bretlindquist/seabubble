@@ -16,7 +16,7 @@ pub enum IncidentState {
     Error,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Severity {
     Low,
@@ -114,3 +114,6 @@ pub fn hash_session_nonce(session_nonce: &str) -> String {
     hasher.update(session_nonce.as_bytes());
     hex::encode(hasher.finalize())
 }
+
+#[cfg(target_os = "macos")]
+pub mod darwin;
