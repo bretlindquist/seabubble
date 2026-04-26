@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  rust-checks:
+    name: Rust Checks
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: daemon
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+          
+      - name: Check formatting
+        run: cargo fmt --check
+        
+      - name: Run clippy
+        run: cargo clippy -- -D warnings
+        
+      - name: Run tests
+        run: cargo test
+
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: daemon
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        
+      - name: Run cargo audit
+        uses: rustsec/audit-check@v1.4.1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+        # If the project is in a subdirectory, the action might need to run there, but we'll try to just install cargo-audit as fallback:
+        continue-on-error: true
+
+      - name: Fallback manual cargo audit
+        if: steps.audit.outcome == 'failure' || true
+        run: |
+          cargo install cargo-audit
+          cargo audit
+
+  swift-checks:
+    name: Swift Checks
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Build Swift
+        run: swift build
